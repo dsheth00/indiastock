@@ -35,16 +35,30 @@ NAMES = {
 }
 
 
+ALL_NSE = NIFTY_50 + [
+    "OLAELEC","ZOMATO","PAYTM","NYKAA","DELHIVERY","POLICYBZR","IRCTC","HAL","BANKBARODA",
+    "PNB","CANBK","IDFCFIRSTB","FEDERALBNK","BANDHANBNK","VEDL","ADANIGREEN","ADANIPOWER",
+    "AMBUJACEM","ACC","DABUR","GODREJCP","MARICO","COLPAL","PIDILITIND","BERGEPAINT",
+    "HAVELLS","VOLTAS","TATAPOWER","TATAELXSI","PERSISTENT","COFORGE","LTIM","MPHASIS",
+    "DIVISLAB","BIOCON","LUPIN","AUROPHARMA","TORNTPHARM","SBICARD","CHOLAFIN","MUTHOOTFIN",
+    "MANAPPURAM","MOTHERSON","BOSCHLTD","SIEMENS","ABB","PAGEIND","DMART","JIOFIN"
+]
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        yf_tickers = [f"{t}.NS" for t in NIFTY_50]
+        from urllib.parse import parse_qs, urlparse
+        qs = parse_qs(urlparse(self.path).query)
+        uni = qs.get("universe", ["nifty"])[0]
+        
+        tickers = ALL_NSE if uni == "all" else NIFTY_50
+        yf_tickers = [f"{t}.NS" for t in tickers]
         rows = []
         try:
             data = yf.download(yf_tickers, period="2d", interval="1d",
                                group_by="ticker", auto_adjust=True,
                                threads=True, progress=False)
             if not data.empty:
-                for sym, yf_sym in zip(NIFTY_50, yf_tickers):
+                for sym, yf_sym in zip(tickers, yf_tickers):
                     try:
                         td = data[yf_sym] if len(yf_tickers) > 1 else data
                         if td.empty or len(td) < 1:

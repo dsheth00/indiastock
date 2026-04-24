@@ -5,6 +5,7 @@ export default function Movers() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [universe, setUniverse] = useState('nifty');
     const [sortKey, setSortKey] = useState('changePct');
     const [sortAsc, setSortAsc] = useState(false);
 
@@ -12,15 +13,15 @@ export default function Movers() {
         setLoading(true);
         setError('');
         try {
-            const rows = await fetchMovers();
-            if (rows[0]?.error) throw new Error(rows[0].error);
+            const rows = await fetchMovers(universe);
+            if (rows.length > 0 && rows[0]?.error) throw new Error(rows[0].error);
             setData(rows);
         } catch (e) {
             setError(e.message || 'Failed to load movers');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [universe]);
 
     const handleSort = (key) => {
         if (sortKey === key) {
@@ -93,12 +94,21 @@ export default function Movers() {
                 <p>Nifty 50 stocks ranked by daily % change</p>
             </div>
 
-            <div className="flex gap-12 items-center mb-24">
-                <button className="btn btn-primary" onClick={load} disabled={loading}>
-                    {loading ? '⏳ Fetching…' : '📡 Fetch Today\'s Movers'}
-                </button>
+            <div className="flex gap-12 items-center mb-24" style={{ flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 200, maxWidth: 300 }}>
+                    <label className="text-sm font-600 text-2 block mb-4">Universe</label>
+                    <select className="select" value={universe} onChange={e => setUniverse(e.target.value)}>
+                        <option value="nifty">Nifty 50 (fast)</option>
+                        <option value="all">All 756 NSE (batch)</option>
+                    </select>
+                </div>
+                <div style={{ marginTop: 24 }}>
+                    <button className="btn btn-primary" onClick={load} disabled={loading}>
+                        {loading ? '⏳ Fetching…' : '📡 Fetch Today\'s Movers'}
+                    </button>
+                </div>
                 {data && (
-                    <span className="text-3 text-sm">
+                    <span className="text-3 text-sm" style={{ marginTop: 24 }}>
                         {data.length} stocks loaded
                     </span>
                 )}

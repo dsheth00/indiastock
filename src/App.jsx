@@ -1,14 +1,18 @@
 import { useState } from 'react';
+import Dashboard from './components/Dashboard';
 import Analysis from './components/Analysis';
+import Screener from './components/Screener';
 import Movers from './components/Movers';
 
 const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
   { id: 'analysis', label: 'Stock Analysis', icon: '🔍' },
+  { id: 'screener', label: 'Screener', icon: '🎯' },
   { id: 'movers', label: 'Winners & Losers', icon: '🏆' },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('analysis');
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   return (
     <div className="app">
@@ -35,7 +39,9 @@ export default function App() {
 
       {/* ── Main Content ────────────────────────── */}
       <main className="main">
+        {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'analysis' && <Analysis />}
+        {activeTab === 'screener' && <Screener />}
         {activeTab === 'movers' && <Movers />}
       </main>
     </div>

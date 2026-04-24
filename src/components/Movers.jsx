@@ -1,13 +1,46 @@
-import { useState, useCallback } from 'react';
 import { fetchMovers } from '../utils/api';
 
+function getMarketStatus() {
+    const now = new Date();
+    // Convert to IST safely
+    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const istTime = new Date(istString);
+    
+    const day = istTime.getDay(); // 0 = Sunday, 1 = Monday...
+    const hours = istTime.getHours();
+    const minutes = istTime.getMinutes();
+    const timeNum = hours * 100 + minutes; // e.g., 915 for 9:15 AM
+    
+    if (day === 0 || day === 6) return { open: false, label: "🔴 Weekend — Market Closed" };
+    if (timeNum < 915) return { open: false, label: "🟡 Pre-Market" };
+    if (timeNum >= 1530) return { open: false, label: "🔴 Market Closed" };
+    return { open: true, label: "🟢 Market Open" };
+}
+
+function getISTTimeString() {
+    return new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false, hour: '2-digit', minute:'2-digit' }) + ' IST';
+}
+
 export default function Movers() {
-    const [data, setData] = useState(null);
+    const [data, setData] = useState(() => {
+        const cached = localStorage.getItem('indstk_movers_data');
+        return cached ? JSON.parse(cached) : null;
+    });
+    const [fetchedAt, setFetchedAt] = useState(() => {
+        return localStorage.getItem('indstk_movers_time') || null;
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [universe, setUniverse] = useState('nifty');
     const [sortKey, setSortKey] = useState('changePct');
     const [sortAsc, setSortAsc] = useState(false);
+    
+    const [marketStatus, setMarketStatus] = useState(getMarketStatus());
+
+    useEffect(() => {
+        const timer = setInterval(() => setMarketStatus(getMarketStatus()), 60000);
+        return () => clearInterval(timer);
+    }, []);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -16,6 +49,10 @@ export default function Movers() {
             const rows = await fetchMovers(universe);
             if (rows.length > 0 && rows[0]?.error) throw new Error(rows[0].error);
             setData(rows);
+            const timeStr = getISTTimeString();
+            setFetchedAt(timeStr);
+            localStorage.setItem('indstk_movers_data', JSON.stringify(rows));
+            localStorage.setItem('indstk_movers_time', timeStr);
         } catch (e) {
             setError(e.message || 'Failed to load movers');
         } finally {
@@ -89,28 +126,63 @@ export default function Movers() {
 
     return (
         <div>
-            <div className="page-header">
-                <h2>Winners & Losers</h2>
-                <p>Nifty 50 stocks ranked by daily % change</p>
+            <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flexDirection: 'column' }}>
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    🏆 Today's Winners & Losers
+                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-3)', fontSize: '0.88rem' }}>
+                    Ranked by daily % change · click any column to sort
+                    <span style={{ 
+                        background: marketStatus.open ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)', 
+                        color: marketStatus.open ? 'var(--green)' : 'var(--text-2)', 
+                        padding: '4px 10px', 
+                        borderRadius: '20px', 
+                        fontSize: '0.75rem', 
+                        fontWeight: 600,
+                        border: `1px solid ${marketStatus.open ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.2)'}`
+                    }}>
+                        {marketStatus.label}
+                    </span>
+                </div>
             </div>
 
-            <div className="flex gap-12 items-center mb-24" style={{ flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 200, maxWidth: 300 }}>
+            <div className="flex gap-12 items-end mb-24" style={{ flexWrap: 'wrap' }}>
+                <div style={{ flex: '0 1 auto', minWidth: 200, maxWidth: 300 }}>
                     <label className="text-sm font-600 text-2 block mb-4">Universe</label>
-                    <select className="select" value={universe} onChange={e => setUniverse(e.target.value)}>
+                    <select className="select" value={universe} onChange={e => { setUniverse(e.target.value); setTimeout(load, 0); }}>
                         <option value="nifty">Nifty 50 (fast)</option>
                         <option value="all">All 756 NSE (batch)</option>
                     </select>
                 </div>
-                <div style={{ marginTop: 24 }}>
+                
+                <div>
                     <button className="btn btn-primary" onClick={load} disabled={loading}>
-                        {loading ? '⏳ Fetching…' : '📡 Fetch Today\'s Movers'}
+                        {loading ? '⏳ Fetching…' : '📡 Refresh from Market'}
                     </button>
                 </div>
-                {data && (
-                    <span className="text-3 text-sm" style={{ marginTop: 24 }}>
-                        {data.length} stocks loaded
-                    </span>
+
+                <div style={{ flex: '0 1 auto', minWidth: 150 }}>
+                    <label className="text-sm font-600 text-2 block mb-4">Browse history</label>
+                    <select className="select" disabled>
+                        <option>Latest</option>
+                    </select>
+                </div>
+
+                {fetchedAt && (
+                    <div style={{ 
+                        marginLeft: 'auto', 
+                        background: 'var(--bg-card)', 
+                        border: '1px solid var(--border)', 
+                        padding: '8px 16px', 
+                        borderRadius: '8px', 
+                        fontSize: '0.82rem', 
+                        color: 'var(--text-2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}>
+                        📡 <strong>Live data</strong> fetched at {fetchedAt}
+                    </div>
                 )}
             </div>
 

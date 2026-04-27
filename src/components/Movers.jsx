@@ -1,218 +1,232 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchMovers } from '../utils/api';
 
+const TOP_N = 20;
+
+// ── Market helpers ────────────────────────────────────────────────────────────
 function getMarketStatus() {
-    const now = new Date();
-    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-    const istTime = new Date(istString);
-    const day = istTime.getDay();
-    const hours = istTime.getHours();
-    const minutes = istTime.getMinutes();
-    const timeNum = hours * 100 + minutes;
-    if (day === 0 || day === 6) return { open: false, label: "🔴 Weekend — Market Closed" };
-    if (timeNum < 915) return { open: false, label: "🟡 Pre-Market" };
-    if (timeNum >= 1530) return { open: false, label: "🔴 Market Closed" };
-    return { open: true, label: "🟢 Market Open" };
+    const istString = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' });
+    const ist = new Date(istString);
+    const day = ist.getDay();
+    const t   = ist.getHours() * 100 + ist.getMinutes();
+    if (day === 0 || day === 6) return { open: false, label: '🔴 Weekend — Market Closed' };
+    if (t < 915)                return { open: false, label: '🟡 Pre-Market' };
+    if (t >= 1530)              return { open: false, label: '🔴 Market Closed' };
+    return { open: true, label: '🟢 Market Open' };
 }
 
-function getISTTimeString() {
-    return new Date().toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false, hour: '2-digit', minute: '2-digit' }) + ' IST';
-}
+function getISTDate()   { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); }
+function getISTTime()   { return new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' }) + ' IST'; }
 
-// Daily movers cache: persist per calendar date so data stays fresh each market day
-function getDailyCache(universe) {
+// ── Cache helpers (per-day, per-universe) ─────────────────────────────────────
+function readCache(universe) {
     try {
-        const key = `indstk_movers_${universe}`;
-        const raw = localStorage.getItem(key);
+        const raw = localStorage.getItem(`indstk_movers_${universe}`);
         if (!raw) return null;
         const { data, date, time } = JSON.parse(raw);
-        const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD in IST
-        if (date !== today) return null; // stale — new day in IST
+        if (date !== getISTDate()) return null; // stale — new IST day
         return { data, time };
     } catch { return null; }
 }
 
-function setDailyCache(universe, data) {
+function writeCache(universe, data) {
+    const time = getISTTime();
     try {
-        const key = `indstk_movers_${universe}`;
-        const date = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-        const time = getISTTimeString();
-        localStorage.setItem(key, JSON.stringify({ data, date, time }));
-        return time;
-    } catch { return getISTTimeString(); }
+        localStorage.setItem(`indstk_movers_${universe}`, JSON.stringify({ data, date: getISTDate(), time }));
+    } catch { /* storage full */ }
+    return time;
 }
 
 export default function Movers() {
     const [universe, setUniverse] = useState('nifty');
-    const cached = getDailyCache('nifty');
-    const [data, setData] = useState(cached?.data || null);
-    const [fetchedAt, setFetchedAt] = useState(cached?.time || null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [sortKey, setSortKey] = useState('changePct');
-    const [sortAsc, setSortAsc] = useState(false);
+
+    // Init from cache immediately — no flicker
+    const initCache = readCache('nifty');
+    const [data,      setData]      = useState(initCache?.data  || null);
+    const [fetchedAt, setFetchedAt] = useState(initCache?.time  || null);
+    const [loading,   setLoading]   = useState(false);
+    const [bgLoading, setBgLoading] = useState(false); // silent background refresh indicator
+    const [error,     setError]     = useState('');
+    const [sortKey,   setSortKey]   = useState('changePct');
+    const [sortAsc,   setSortAsc]   = useState(false);
     const [marketStatus, setMarketStatus] = useState(getMarketStatus());
 
+    // Keep market status clock ticking
     useEffect(() => {
-        const timer = setInterval(() => setMarketStatus(getMarketStatus()), 60000);
-        return () => clearInterval(timer);
+        const t = setInterval(() => setMarketStatus(getMarketStatus()), 60_000);
+        return () => clearInterval(t);
     }, []);
 
-    // When universe changes, load from cache or prompt
-    useEffect(() => {
-        const c = getDailyCache(universe);
-        if (c) {
-            setData(c.data);
-            setFetchedAt(c.time);
-        } else {
-            setData(null);
-            setFetchedAt(null);
-        }
-    }, [universe]);
-
-    const load = useCallback(async () => {
-        setLoading(true);
+    // Fetch function — silent=true means don't block UI
+    const load = useCallback(async (silent = false) => {
+        if (silent) setBgLoading(true); else setLoading(true);
         setError('');
         try {
             const rows = await fetchMovers(universe);
-            if (rows.length > 0 && rows[0]?.error) throw new Error(rows[0].error);
-            const timeStr = setDailyCache(universe, rows);
+            if (!Array.isArray(rows) || rows[0]?.error) throw new Error(rows[0]?.error || 'Bad response');
+            const time = writeCache(universe, rows);
             setData(rows);
-            setFetchedAt(timeStr);
+            setFetchedAt(time);
         } catch (e) {
-            setError(e.message || 'Failed to load movers');
+            if (!silent) setError(e.message || 'Failed to load movers');
         } finally {
-            setLoading(false);
+            if (silent) setBgLoading(false); else setLoading(false);
         }
     }, [universe]);
 
+    // On mount / universe change: show cache instantly, then prefetch if no cache for today
+    useEffect(() => {
+        const cached = readCache(universe);
+        if (cached) {
+            setData(cached.data);
+            setFetchedAt(cached.time);
+            // If market is open, do a silent background refresh so data stays fresh
+            if (getMarketStatus().open) load(true);
+        } else {
+            setData(null);
+            setFetchedAt(null);
+            // Auto-fetch — no cache at all for today
+            load(false);
+        }
+    }, [universe]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Sorting
     const handleSort = (key) => {
-        if (sortKey === key) setSortAsc(!sortAsc);
+        if (sortKey === key) setSortAsc(a => !a);
         else { setSortKey(key); setSortAsc(false); }
     };
 
-    const sorted = data
-        ? [...data].sort((a, b) => {
-            const av = a[sortKey] ?? 0, bv = b[sortKey] ?? 0;
-            return sortAsc ? av - bv : bv - av;
-        }) : [];
+    const allByPct = data
+        ? [...data].sort((a, b) => sortAsc
+            ? (a[sortKey] ?? 0) - (b[sortKey] ?? 0)
+            : (b[sortKey] ?? 0) - (a[sortKey] ?? 0))
+        : [];
 
-    const winners = sorted.filter(r => r.changePct > 0);
-    const losers  = sorted.filter(r => r.changePct < 0).reverse();
+    // Top 20 winners (highest +%) and top 20 losers (worst −%)
+    const byPctDesc = data ? [...data].sort((a, b) => b.changePct - a.changePct) : [];
+    const winners   = byPctDesc.filter(r => r.changePct > 0).slice(0, TOP_N);
+    const losers    = byPctDesc.filter(r => r.changePct < 0).reverse().slice(0, TOP_N);
+
     const fmt = (v) => typeof v === 'number' ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
 
     const SortTh = ({ label, col }) => (
-        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort(col)}>
-            {label} {sortKey === col ? (sortAsc ? '↑' : '↓') : <span style={{ opacity: 0.3 }}>↕</span>}
+        <th style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} onClick={() => handleSort(col)}>
+            {label} {sortKey === col ? (sortAsc ? '↑' : '↓') : <span style={{ opacity: 0.25 }}>↕</span>}
         </th>
     );
 
-    const MoverTable = ({ rows }) => (
-        <div className="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <SortTh label="Ticker"    col="ticker" />
-                        <th>Company</th>
-                        <SortTh label="Price (₹)"  col="price" />
-                        <SortTh label="Change (₹)" col="change" />
-                        <SortTh label="Change (%)" col="changePct" />
-                        <SortTh label="Volume"     col="volume" />
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map(r => (
-                        <tr key={r.ticker}>
-                            <td className="mono" style={{ fontWeight: 700 }}>{r.ticker}</td>
-                            <td className="text-2 text-sm">{r.company}</td>
-                            <td className="mono">₹{fmt(r.price)}</td>
-                            <td className={`mono ${r.change >= 0 ? 'text-green' : 'text-red'}`}>
-                                {r.change >= 0 ? '+' : ''}{fmt(r.change)}
-                            </td>
-                            <td>
-                                <span className={`badge ${r.changePct >= 0 ? 'badge-green' : 'badge-red'}`}>
-                                    {r.changePct >= 0 ? '▲' : '▼'} {fmt(Math.abs(r.changePct))}%
-                                </span>
-                            </td>
-                            <td className="mono text-2">{r.volume?.toLocaleString('en-IN') || '—'}</td>
+    const MoverTable = ({ rows, limit }) => {
+        const display = limit ? rows.slice(0, limit) : rows;
+        return (
+            <div className="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <SortTh label="Ticker"    col="ticker" />
+                            <th>Company</th>
+                            <SortTh label="Price (₹)"  col="price" />
+                            <SortTh label="Chg (₹)"   col="change" />
+                            <SortTh label="Chg %"      col="changePct" />
+                            <SortTh label="Volume"     col="volume" />
                         </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
+                    </thead>
+                    <tbody>
+                        {display.map((r, i) => (
+                            <tr key={r.ticker}>
+                                <td className="text-3" style={{ fontSize: '.72rem', width: 28 }}>{i + 1}</td>
+                                <td className="mono" style={{ fontWeight: 700 }}>{r.ticker}</td>
+                                <td className="text-2 text-sm">{r.company}</td>
+                                <td className="mono">₹{fmt(r.price)}</td>
+                                <td className={`mono ${r.change >= 0 ? 'text-green' : 'text-red'}`}>
+                                    {r.change >= 0 ? '+' : ''}{fmt(r.change)}
+                                </td>
+                                <td>
+                                    <span className={`badge ${r.changePct >= 0 ? 'badge-green' : 'badge-red'}`}>
+                                        {r.changePct >= 0 ? '▲' : '▼'} {fmt(Math.abs(r.changePct))}%
+                                    </span>
+                                </td>
+                                <td className="mono text-2">{r.volume?.toLocaleString('en-IN') || '—'}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
 
     return (
         <div>
-            {/* Header */}
-            <div className="page-header" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* ── Header ── */}
+            <div className="page-header" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     🏆 Today's Winners &amp; Losers
                     <span style={{
-                        background: marketStatus.open ? 'rgba(22,163,74,.1)' : 'rgba(220,38,38,.1)',
+                        background: marketStatus.open ? 'rgba(22,163,74,.1)' : 'rgba(220,38,38,.08)',
                         color: marketStatus.open ? 'var(--green)' : 'var(--red)',
                         padding: '3px 10px', borderRadius: 20, fontSize: '.72rem', fontWeight: 600,
                         border: `1px solid ${marketStatus.open ? 'rgba(22,163,74,.3)' : 'rgba(220,38,38,.2)'}`
                     }}>{marketStatus.label}</span>
+                    {bgLoading && (
+                        <span style={{ fontSize: '.72rem', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5, margin: 0 }} />
+                            refreshing…
+                        </span>
+                    )}
                 </h2>
-                <p>Ranked by daily % change · click any column to sort · cached daily per market session</p>
+                <p>Top {TOP_N} winners &amp; losers by daily % · cached per market day · auto-refreshed on open</p>
             </div>
 
-            {/* Controls */}
+            {/* ── Controls ── */}
             <div className="flex gap-12 items-end mb-24" style={{ flexWrap: 'wrap' }}>
                 <div className="input-group" style={{ minWidth: 200 }}>
                     <label>Universe</label>
                     <select className="select" value={universe} onChange={e => setUniverse(e.target.value)}>
                         <option value="nifty">Nifty 50 (fast)</option>
-                        <option value="all">All NSE ~100 stocks (slower)</option>
+                        <option value="all">All NSE ~100 stocks</option>
                     </select>
                 </div>
-                <button className="btn btn-primary" onClick={load} disabled={loading}>
+                <button className="btn btn-primary" onClick={() => load(false)} disabled={loading || bgLoading}>
                     {loading ? '⏳ Fetching…' : '📡 Refresh from Market'}
                 </button>
-                <div className="input-group" style={{ minWidth: 140 }}>
-                    <label>Browse history</label>
-                    <select className="select" disabled><option>Latest</option></select>
-                </div>
                 {fetchedAt && (
                     <div style={{
                         marginLeft: 'auto', background: 'var(--bg-card)', border: '1px solid var(--border)',
-                        padding: '8px 14px', borderRadius: 8, fontSize: '.82rem', color: 'var(--text-2)',
+                        padding: '7px 14px', borderRadius: 8, fontSize: '.8rem', color: 'var(--text-2)',
                         display: 'flex', alignItems: 'center', gap: 6
                     }}>
-                        📡 <strong>Live data</strong> fetched at {fetchedAt}
+                        📡 <strong>Data</strong> as of {fetchedAt}
                     </div>
                 )}
             </div>
 
             {error && <div className="error-box mb-24">{error}</div>}
-            {loading && <div className="loading"><div className="spinner" /> Fetching {universe === 'nifty' ? 'Nifty 50' : 'NSE'} movers…</div>}
 
-            {!loading && !data && !error && (
-                <div className="empty">
-                    {getDailyCache(universe)
-                        ? null
-                        : <p>Click <strong>Refresh from Market</strong> to load today's leaderboard.</p>}
-                </div>
+            {loading && !data && (
+                <div className="loading"><div className="spinner" /> Fetching {universe === 'nifty' ? 'Nifty 50' : 'NSE'} movers…</div>
             )}
 
-            {!loading && data && (
+            {data && (
                 <>
-                    {/* Winners / Losers split */}
+                    {/* ── Top 20 Winners / Losers side-by-side ── */}
                     <div className="grid-2 mb-24">
                         <div>
-                            <div className="banner-win">▲ Winners ({winners.length})</div>
-                            {winners.length > 0 ? <MoverTable rows={winners} /> : <div className="empty">No gainers today</div>}
+                            <div className="banner-win">▲ Top {winners.length} Winners</div>
+                            {winners.length > 0
+                                ? <MoverTable rows={winners} />
+                                : <div className="empty">No gainers today</div>}
                         </div>
                         <div>
-                            <div className="banner-lose">▼ Losers ({losers.length})</div>
-                            {losers.length > 0 ? <MoverTable rows={losers} /> : <div className="empty">No losers today</div>}
+                            <div className="banner-lose">▼ Top {losers.length} Losers</div>
+                            {losers.length > 0
+                                ? <MoverTable rows={losers} />
+                                : <div className="empty">No decliners today</div>}
                         </div>
                     </div>
 
-                    {/* Full ranking */}
-                    <h3 style={{ fontWeight: 700, marginBottom: 12 }}>📋 Full Ranking (sort by any column)</h3>
-                    <MoverTable rows={sorted} />
+                    {/* ── Full sortable ranking ── */}
+                    <h3 style={{ fontWeight: 700, marginBottom: 12 }}>📋 Full Ranking — click any column to sort</h3>
+                    <MoverTable rows={allByPct} />
                 </>
             )}
         </div>

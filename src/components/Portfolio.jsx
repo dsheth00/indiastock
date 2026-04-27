@@ -1,44 +1,46 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, ReferenceLine, Cell, Legend,
 } from 'recharts';
 
-const PORTFOLIO_CSV_KEY = 'indstk_port_csv';
-const PORTFOLIO_DATA_KEY = 'indstk_port_data';
+const CSV_KEY  = 'indstk_port_csv';  // raw CSV text
+const DATA_KEY = 'indstk_port_data'; // last parsed result (stale prices)
 
-async function parsePortfolio(csvText) {
+const fmt      = (v) => typeof v === 'number' ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
+const fmtRupee = (v) => typeof v === 'number' ? `₹${fmt(v)}` : '—';
+const pnlColor = (v) => v >= 0 ? 'var(--green)' : 'var(--red)';
+
+// ── parse via API ──────────────────────────────────────────────────────────────
+async function parseCsv(csvText) {
     const r = await fetch('/api/portfolio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csv: csvText }),
     });
-    return r.json();
+    if (!r.ok) throw new Error(`Server error ${r.status}`);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data;
 }
 
-const fmt = (v) =>
-    typeof v === 'number'
-        ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 })
-        : '—';
-const fmtRupee = (v) => (typeof v === 'number' ? `₹${fmt(v)}` : '—');
-const pnlColor = (v) => (v >= 0 ? 'var(--green)' : 'var(--red)');
-
+// ── Sub-components ─────────────────────────────────────────────────────────────
 const SummaryCard = ({ label, value, sub, color }) => (
     <div style={{
         background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: 8, padding: '16px 20px', flex: 1, minWidth: 160
+        borderRadius: 8, padding: '16px 20px', flex: 1, minWidth: 155,
     }}>
-        <div style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6 }}>
+        <div style={{ fontSize: '.7rem', fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>
             {label}
         </div>
-        <div style={{ fontSize: '1.25rem', fontWeight: 700, fontFamily: 'var(--mono)', color: color || 'var(--text)' }}>
+        <div style={{ fontSize: '1.2rem', fontWeight: 700, fontFamily: 'var(--mono)', color: color || 'var(--text)', letterSpacing: '-.01em' }}>
             {value}
         </div>
-        {sub && <div style={{ fontSize: '.75rem', color: 'var(--text-3)', marginTop: 2 }}>{sub}</div>}
+        {sub && <div style={{ fontSize: '.73rem', color: 'var(--text-3)', marginTop: 3 }}>{sub}</div>}
     </div>
 );
 
-const CustomTooltip = ({ active, payload, label }) => {
+const ChartTip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     return (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: '.82rem' }}>
@@ -53,115 +55,147 @@ const CustomTooltip = ({ active, payload, label }) => {
     );
 };
 
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function Portfolio() {
+    // Init positions/summary from cached data immediately — no wait flash
     const [positions, setPositions] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(PORTFOLIO_DATA_KEY))?.positions || []; } catch { return []; }
+        try { return JSON.parse(localStorage.getItem(DATA_KEY))?.positions || []; } catch { return []; }
     });
     const [summary, setSummary] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(PORTFOLIO_DATA_KEY))?.summary || null; } catch { return null; }
+        try { return JSON.parse(localStorage.getItem(DATA_KEY))?.summary || null; } catch { return null; }
     });
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [chartType, setChartType] = useState('pnl'); // 'pnl' | 'value'
+    const [loading,    setLoading]    = useState(false);
+    const [refreshing, setRefreshing] = useState(false); // silent bg refresh indicator
+    const [error,      setError]      = useState('');
+    const [lastUpdate, setLastUpdate] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(DATA_KEY))?.updatedAt || null; } catch { return null; }
+    });
+    const [chartType, setChartType] = useState('pnl');
     const fileRef = useRef(null);
 
-    const process = useCallback(async (csvText) => {
-        setLoading(true);
+    // Core: parse CSV via API, persist everything
+    const process = useCallback(async (csvText, silent = false) => {
+        if (silent) setRefreshing(true); else setLoading(true);
         setError('');
         try {
-            const result = await parsePortfolio(csvText);
-            if (result.error) throw new Error(result.error);
-            setPositions(result.positions);
-            setSummary(result.summary);
-            localStorage.setItem(PORTFOLIO_CSV_KEY, csvText);
-            localStorage.setItem(PORTFOLIO_DATA_KEY, JSON.stringify(result));
+            const result = await parseCsv(csvText);
+            const updatedAt = new Date().toLocaleTimeString('en-IN', {
+                timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit'
+            }) + ' IST';
+            result.updatedAt = updatedAt;
+            setPositions(result.positions || []);
+            setSummary(result.summary || null);
+            setLastUpdate(updatedAt);
+            // Persist both CSV and parsed data
+            localStorage.setItem(CSV_KEY,  csvText);
+            localStorage.setItem(DATA_KEY, JSON.stringify(result));
         } catch (e) {
-            setError(e.message || 'Failed to parse portfolio');
+            if (!silent) setError(e.message || 'Failed to parse portfolio');
         } finally {
-            setLoading(false);
+            if (silent) setRefreshing(false); else setLoading(false);
         }
     }, []);
 
-    const handleFile = (e) => {
+    // On mount: if persisted CSV exists, silently re-parse to get fresh LTP prices
+    useEffect(() => {
+        const saved = localStorage.getItem(CSV_KEY);
+        if (saved) {
+            // Show stale cached data immediately (done via useState init above)
+            // Then silently refresh to get latest prices
+            process(saved, true);
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // File upload → override persisted CSV
+    const handleFileRead = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        e.target.value = ''; // allow re-upload of same file
         const reader = new FileReader();
-        reader.onload = (ev) => process(ev.target.result);
+        reader.onload = (ev) => process(ev.target.result, false);
         reader.readAsText(file);
     };
 
-    // Auto-load from localStorage on mount if exists
-    const handleReload = () => {
-        const cached = localStorage.getItem(PORTFOLIO_CSV_KEY);
-        if (cached) process(cached);
-        else fileRef.current?.click();
-    };
+    const hasData = positions.length > 0 && summary;
 
     // Chart data
     const chartData = positions
         .filter(p => p.invested > 0 || Math.abs(p.unrealized) > 0 || Math.abs(p.realized) > 0)
-        .map(p => ({
-            name: p.stock,
-            Invested: p.invested,
-            Unrealized: p.unrealized,
-            Realized: p.realized,
-            Current: p.current,
-        }));
-
-    const hasData = positions.length > 0 && summary;
+        .map(p => ({ name: p.stock, Invested: p.invested, Unrealized: p.unrealized, Realized: p.realized, Current: p.current }));
 
     return (
         <div>
             <div className="page-header">
                 <h2>💼 My Portfolio</h2>
-                <p>Upload your broker's trade export to see P&amp;L, realized gains, and allocation charts</p>
+                <p>Auto-reloaded with live prices each visit · upload a new file to override</p>
             </div>
 
-            {/* Upload controls */}
+            {/* Controls row */}
             <div className="flex gap-12 items-center mb-24" style={{ flexWrap: 'wrap' }}>
                 <input
                     ref={fileRef}
                     type="file"
                     accept=".csv,.txt"
                     style={{ display: 'none' }}
-                    onChange={handleFile}
+                    onChange={handleFileRead}
                 />
                 <button className="btn btn-primary" onClick={() => fileRef.current?.click()} disabled={loading}>
                     📂 Upload port.csv
                 </button>
-                {localStorage.getItem(PORTFOLIO_CSV_KEY) && (
-                    <button className="btn" onClick={handleReload} disabled={loading}>
-                        🔄 Reload Last File
+
+                {localStorage.getItem(CSV_KEY) && (
+                    <button className="btn" onClick={() => process(localStorage.getItem(CSV_KEY), false)} disabled={loading || refreshing}>
+                        🔄 Force Refresh Prices
                     </button>
                 )}
-                {hasData && (
-                    <span style={{ fontSize: '.82rem', color: 'var(--text-3)' }}>
-                        {positions.length} positions · last parsed from file
-                    </span>
-                )}
-                {loading && <div className="spinner" />}
+
+                {/* Status indicators */}
+                <div className="flex gap-8 items-center" style={{ marginLeft: 'auto' }}>
+                    {refreshing && (
+                        <span style={{ fontSize: '.78rem', color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5, margin: 0 }} />
+                            Refreshing prices…
+                        </span>
+                    )}
+                    {lastUpdate && !refreshing && (
+                        <span style={{
+                            fontSize: '.78rem', color: 'var(--text-3)', background: 'var(--bg-card)',
+                            border: '1px solid var(--border)', padding: '5px 10px', borderRadius: 6
+                        }}>
+                            ✓ Updated {lastUpdate} · {positions.length} positions
+                        </span>
+                    )}
+                </div>
             </div>
 
             {error && <div className="error-box mb-24">{error}</div>}
 
+            {loading && (
+                <div className="loading"><div className="spinner" /> Parsing portfolio…</div>
+            )}
+
             {!hasData && !loading && (
-                <div className="empty" style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 48 }}>
-                    <div style={{ fontSize: '2rem', marginBottom: 12 }}>📊</div>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>No portfolio data loaded</div>
-                    <div style={{ color: 'var(--text-3)', fontSize: '.88rem' }}>
-                        Upload your broker's trade history CSV to see your positions, P&amp;L breakdown, and charts
+                <div className="empty" style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 56 }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>📊</div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 6 }}>No portfolio data loaded</div>
+                    <div style={{ color: 'var(--text-3)', fontSize: '.88rem', marginBottom: 20 }}>
+                        Upload your broker's trade history CSV to see your positions, P&amp;L breakdown, and charts.
+                        <br />Once uploaded, your data persists across sessions and prices refresh automatically.
                     </div>
+                    <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
+                        📂 Upload port.csv
+                    </button>
                 </div>
             )}
 
             {hasData && (
                 <>
-                    {/* ── Summary metrics ── */}
+                    {/* ── Summary cards ── */}
                     <div className="flex gap-12 mb-24" style={{ flexWrap: 'wrap' }}>
-                        <SummaryCard label="Current Invested" value={fmtRupee(summary.totalInvested)} />
-                        <SummaryCard label="Current Value" value={fmtRupee(summary.totalCurrent)}
-                            sub={summary.totalCurrent > summary.totalInvested ? '▲ Gaining' : '▼ Below cost'} />
-                        <SummaryCard label="Unrealized P&L" value={fmtRupee(summary.totalUnrealized)}
+                        <SummaryCard label="Current Invested"    value={fmtRupee(summary.totalInvested)} />
+                        <SummaryCard label="Current Value"       value={fmtRupee(summary.totalCurrent)}
+                            sub={summary.totalCurrent > summary.totalInvested ? '▲ Gaining on cost' : '▼ Below cost'} />
+                        <SummaryCard label="Unrealized P&L"      value={fmtRupee(summary.totalUnrealized)}
                             color={pnlColor(summary.totalUnrealized)} />
                         <SummaryCard label="Realized (Historic)" value={fmtRupee(summary.totalRealized)}
                             color={pnlColor(summary.totalRealized)} sub="Booked profits/losses" />
@@ -173,11 +207,11 @@ export default function Portfolio() {
                         />
                     </div>
 
-                    {/* ── Chart controls ── */}
+                    {/* ── Chart toggle ── */}
                     <div className="flex gap-8 items-center mb-12">
-                        <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-2)' }}>Chart view:</span>
+                        <span style={{ fontSize: '.8rem', fontWeight: 600, color: 'var(--text-2)' }}>Chart:</span>
                         {[
-                            { id: 'pnl', label: 'P&L Breakdown' },
+                            { id: 'pnl',   label: 'P&L Breakdown' },
                             { id: 'value', label: 'Invested vs Current' },
                         ].map(c => (
                             <button
@@ -189,65 +223,49 @@ export default function Portfolio() {
                         ))}
                     </div>
 
-                    {/* ── Main chart ── */}
+                    {/* ── Chart ── */}
                     <div className="chart-container mb-24" style={{ padding: '20px 8px 12px' }}>
-                        <ResponsiveContainer width="100%" height={320}>
+                        <ResponsiveContainer width="100%" height={300}>
                             {chartType === 'pnl' ? (
-                                <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 40, left: 8 }}>
+                                <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 44, left: 8 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-3)' }}
-                                        angle={-35} textAnchor="end" interval={0} />
-                                    <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }}
-                                        tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ paddingTop: 8, fontSize: '.8rem' }} />
+                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-3)' }} angle={-35} textAnchor="end" interval={0} />
+                                    <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+                                    <Tooltip content={<ChartTip />} />
+                                    <Legend wrapperStyle={{ paddingTop: 8, fontSize: '.78rem' }} />
                                     <ReferenceLine y={0} stroke="var(--text-3)" />
-                                    <Bar dataKey="Unrealized" name="Unrealized P&L" radius={[3,3,0,0]}>
-                                        {chartData.map(d => (
-                                            <Cell key={d.name} fill={d.Unrealized >= 0 ? 'var(--green)' : 'var(--red)'} />
-                                        ))}
+                                    <Bar dataKey="Unrealized" name="Unrealized P&L" radius={[3, 3, 0, 0]}>
+                                        {chartData.map(d => <Cell key={d.name} fill={d.Unrealized >= 0 ? 'var(--green)' : 'var(--red)'} />)}
                                     </Bar>
-                                    <Bar dataKey="Realized" name="Realized P&L" radius={[3,3,0,0]} opacity={0.65}>
-                                        {chartData.map(d => (
-                                            <Cell key={d.name} fill={d.Realized >= 0 ? '#3ddbd9' : '#f97316'} />
-                                        ))}
+                                    <Bar dataKey="Realized" name="Realized P&L" radius={[3, 3, 0, 0]} opacity={0.7}>
+                                        {chartData.map(d => <Cell key={d.name} fill={d.Realized >= 0 ? '#3ddbd9' : '#f97316'} />)}
                                     </Bar>
                                 </BarChart>
                             ) : (
-                                <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 40, left: 8 }}>
+                                <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 44, left: 8 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-3)' }}
-                                        angle={-35} textAnchor="end" interval={0} />
-                                    <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }}
-                                        tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ paddingTop: 8, fontSize: '.8rem' }} />
-                                    <Bar dataKey="Invested" name="Capital Invested" fill="var(--accent)" radius={[3,3,0,0]} />
-                                    <Bar dataKey="Current" name="Current Value" radius={[3,3,0,0]}>
-                                        {chartData.map(d => (
-                                            <Cell key={d.name} fill={d.Current >= d.Invested ? 'var(--green)' : 'var(--red)'} />
-                                        ))}
+                                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-3)' }} angle={-35} textAnchor="end" interval={0} />
+                                    <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+                                    <Tooltip content={<ChartTip />} />
+                                    <Legend wrapperStyle={{ paddingTop: 8, fontSize: '.78rem' }} />
+                                    <Bar dataKey="Invested" name="Capital Invested" fill="var(--accent)" radius={[3, 3, 0, 0]} />
+                                    <Bar dataKey="Current"  name="Current Value"    radius={[3, 3, 0, 0]}>
+                                        {chartData.map(d => <Cell key={d.name} fill={d.Current >= d.Invested ? 'var(--green)' : 'var(--red)'} />)}
                                     </Bar>
                                 </BarChart>
                             )}
                         </ResponsiveContainer>
                     </div>
 
-                    {/* ── Position table ── */}
+                    {/* ── Positions table ── */}
                     <h3 style={{ fontWeight: 700, marginBottom: 12 }}>📋 All Positions</h3>
                     <div className="table-wrap">
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Stock</th>
-                                    <th>Qty</th>
-                                    <th>Avg Price</th>
-                                    <th>LTP</th>
-                                    <th>Invested</th>
-                                    <th>Current Value</th>
-                                    <th>Unrealized</th>
-                                    <th>Realized (Historic)</th>
-                                    <th>Total Net P&L</th>
+                                    <th>Stock</th><th>Qty</th><th>Avg Price</th><th>LTP</th>
+                                    <th>Invested</th><th>Current</th>
+                                    <th>Unrealized</th><th>Realized</th><th>Total P&L</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -264,12 +282,14 @@ export default function Portfolio() {
                                         </td>
                                         <td className={`mono ${p.realized >= 0 ? 'text-green' : 'text-red'}`}
                                             style={{ opacity: Math.abs(p.realized) < 0.01 ? 0.3 : 1 }}>
-                                            {p.realized !== 0 ? (p.realized >= 0 ? '+' : '') + fmtRupee(p.realized) : '—'}
+                                            {Math.abs(p.realized) >= 0.01
+                                                ? (p.realized >= 0 ? '+' : '') + fmtRupee(p.realized)
+                                                : '—'}
                                         </td>
-                                        <td style={{ fontWeight: 700 }}
-                                            className={`mono ${p.totalPnl >= 0 ? 'text-green' : 'text-red'}`}>
+                                        <td className={`mono ${p.totalPnl >= 0 ? 'text-green' : 'text-red'}`}
+                                            style={{ fontWeight: 700 }}>
                                             {p.totalPnl >= 0 ? '+' : ''}{fmtRupee(p.totalPnl)}
-                                            <span style={{ fontSize: '.72rem', marginLeft: 4, opacity: 0.75 }}>
+                                            <span style={{ fontSize: '.7rem', marginLeft: 4, opacity: 0.7 }}>
                                                 ({p.pnlPct > 0 ? '+' : ''}{p.pnlPct}%)
                                             </span>
                                         </td>

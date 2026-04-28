@@ -99,6 +99,7 @@ export default function Screener() {
                                     <th>Div Yield %</th>
                                     <th>Profit Margin %</th>
                                     <th>Rev Growth %</th>
+                                    <th>Link</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -118,6 +119,15 @@ export default function Screener() {
                                         </td>
                                         <td className={`mono ${(r['Revenue Growth'] ?? 0) > 0 ? 'text-green' : 'text-red'}`}>
                                             {fmt(r['Revenue Growth'])}
+                                        </td>
+                                        <td>
+                                            <a 
+                                                href={`https://www.screener.in/company/${r.Ticker}/consolidated/`} 
+                                                target="_blank" rel="noopener noreferrer"
+                                                style={{ fontSize: '.75rem', fontWeight: 600 }}
+                                            >
+                                                ↗
+                                            </a>
                                         </td>
                                     </tr>
                                 ))}

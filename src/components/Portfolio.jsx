@@ -3,6 +3,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, ReferenceLine, Cell, Legend,
 } from 'recharts';
+import { getCloudStore, setCloudStore } from '../utils/api';
 
 const CSV_KEY  = 'indstk_port_csv';  // raw CSV text
 const DATA_KEY = 'indstk_port_data'; // last parsed result (stale prices)
@@ -57,21 +58,38 @@ const ChartTip = ({ active, payload, label }) => {
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function Portfolio() {
-    // Init positions/summary from cached data immediately — no wait flash
-    const [positions, setPositions] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(DATA_KEY))?.positions || []; } catch { return []; }
-    });
-    const [summary, setSummary] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(DATA_KEY))?.summary || null; } catch { return null; }
-    });
+    const [positions, setPositions] = useState([]);
+    const [summary, setSummary] = useState(null);
     const [loading,    setLoading]    = useState(false);
     const [refreshing, setRefreshing] = useState(false); // silent bg refresh indicator
+    const [cloudLoading, setCloudLoading] = useState(true);
     const [error,      setError]      = useState('');
-    const [lastUpdate, setLastUpdate] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(DATA_KEY))?.updatedAt || null; } catch { return null; }
-    });
+    const [lastUpdate, setLastUpdate] = useState(null);
+    const [csvTextData, setCsvTextData] = useState('');
     const [chartType, setChartType] = useState('pnl');
     const fileRef = useRef(null);
+
+    useEffect(() => {
+        let mounted = true;
+        async function loadCloud() {
+            setCloudLoading(true);
+            const [csv, data] = await Promise.all([
+                getCloudStore(CSV_KEY),
+                getCloudStore(DATA_KEY)
+            ]);
+            if (mounted) {
+                if (csv) setCsvTextData(csv);
+                if (data) {
+                    setPositions(data.positions || []);
+                    setSummary(data.summary || null);
+                    setLastUpdate(data.updatedAt || null);
+                }
+                setCloudLoading(false);
+            }
+        }
+        loadCloud();
+        return () => { mounted = false; };
+    }, []);
 
     // Core: parse CSV via API, persist everything
     const process = useCallback(async (csvText, silent = false) => {
@@ -86,9 +104,10 @@ export default function Portfolio() {
             setPositions(result.positions || []);
             setSummary(result.summary || null);
             setLastUpdate(updatedAt);
+            setCsvTextData(csvText);
             // Persist both CSV and parsed data
-            localStorage.setItem(CSV_KEY,  csvText);
-            localStorage.setItem(DATA_KEY, JSON.stringify(result));
+            setCloudStore(CSV_KEY, csvText);
+            setCloudStore(DATA_KEY, result);
         } catch (e) {
             if (!silent) setError(e.message || 'Failed to parse portfolio');
         } finally {
@@ -137,8 +156,8 @@ export default function Portfolio() {
                     📂 Upload port.csv
                 </button>
 
-                {localStorage.getItem(CSV_KEY) && (
-                    <button className="btn" onClick={() => process(localStorage.getItem(CSV_KEY), false)} disabled={loading || refreshing}>
+                {csvTextData && (
+                    <button className="btn" onClick={() => process(csvTextData, false)} disabled={loading || refreshing || cloudLoading}>
                         🔄 Force Refresh Prices
                     </button>
                 )}
@@ -164,11 +183,15 @@ export default function Portfolio() {
 
             {error && <div className="error-box mb-24">{error}</div>}
 
-            {loading && (
+            {cloudLoading && (
+                <div className="loading"><div className="spinner" /> Loading portfolio from cloud…</div>
+            )}
+
+            {loading && !cloudLoading && (
                 <div className="loading"><div className="spinner" /> Parsing portfolio…</div>
             )}
 
-            {!hasData && !loading && (
+            {!hasData && !loading && !cloudLoading && (
                 <div className="empty" style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 56 }}>
                     <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>📊</div>
                     <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 6 }}>No portfolio data loaded</div>
@@ -182,7 +205,7 @@ export default function Portfolio() {
                 </div>
             )}
 
-            {hasData && (
+            {hasData && !cloudLoading && (
                 <>
                     {/* ── Summary cards ── */}
                     <div className="flex gap-12 mb-24" style={{ flexWrap: 'wrap' }}>

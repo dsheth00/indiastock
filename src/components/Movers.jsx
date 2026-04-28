@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchMovers } from '../utils/api';
+import { fetchMovers, getCloudStore, setCloudStore } from '../utils/api';
 
 const TOP_N = 20;
 
@@ -19,21 +19,20 @@ function getISTDate()   { return new Date().toLocaleDateString('en-CA', { timeZo
 function getISTTime()   { return new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' }) + ' IST'; }
 
 // ── Cache helpers (per-day, per-universe) ─────────────────────────────────────
-function readCache(universe) {
+async function readCloudCache(universe) {
     try {
-        const raw = localStorage.getItem(`indstk_movers_${universe}`);
+        const raw = await getCloudStore(`indstk_movers_${universe}`);
         if (!raw) return null;
-        const { data, date, time } = JSON.parse(raw);
-        if (date !== getISTDate()) return null; // stale — new IST day
-        return { data, time };
+        if (raw.date !== getISTDate()) return null; // stale — new IST day
+        return { data: raw.data, time: raw.time };
     } catch { return null; }
 }
 
-function writeCache(universe, data) {
+async function writeCloudCache(universe, data) {
     const time = getISTTime();
     try {
-        localStorage.setItem(`indstk_movers_${universe}`, JSON.stringify({ data, date: getISTDate(), time }));
-    } catch { /* storage full */ }
+        await setCloudStore(`indstk_movers_${universe}`, { data, date: getISTDate(), time });
+    } catch { /* ignore */ }
     return time;
 }
 
@@ -41,10 +40,10 @@ export default function Movers() {
     const [universe, setUniverse] = useState('nifty');
 
     // Init from cache immediately — no flicker
-    const initCache = readCache('nifty');
-    const [data,      setData]      = useState(initCache?.data  || null);
-    const [fetchedAt, setFetchedAt] = useState(initCache?.time  || null);
+    const [data,      setData]      = useState(null);
+    const [fetchedAt, setFetchedAt] = useState(null);
     const [loading,   setLoading]   = useState(false);
+    const [cloudLoading, setCloudLoading] = useState(true);
     const [bgLoading, setBgLoading] = useState(false); // silent background refresh indicator
     const [error,     setError]     = useState('');
     const [sortKey,   setSortKey]   = useState('changePct');
@@ -64,7 +63,7 @@ export default function Movers() {
         try {
             const rows = await fetchMovers(universe);
             if (!Array.isArray(rows) || rows[0]?.error) throw new Error(rows[0]?.error || 'Bad response');
-            const time = writeCache(universe, rows);
+            const time = await writeCloudCache(universe, rows);
             setData(rows);
             setFetchedAt(time);
         } catch (e) {
@@ -74,19 +73,25 @@ export default function Movers() {
         }
     }, [universe]);
 
-    // On mount / universe change: show cache instantly, then prefetch if no cache for today
     useEffect(() => {
-        const cached = readCache(universe);
-        if (cached) {
-            setData(cached.data);
-            setFetchedAt(cached.time);
-        } else {
-            setData(null);
-            setFetchedAt(null);
-            // Auto-fetch — no cache at all for today
-            load(false);
+        let mounted = true;
+        async function init() {
+            setCloudLoading(true);
+            const cached = await readCloudCache(universe);
+            if (mounted) {
+                if (cached) {
+                    setData(cached.data);
+                    setFetchedAt(cached.time);
+                } else {
+                    setData(null);
+                    setFetchedAt(null);
+                }
+                setCloudLoading(false);
+            }
         }
-    }, [universe]); // eslint-disable-line react-hooks/exhaustive-deps
+        init();
+        return () => { mounted = false; };
+    }, [universe]);
 
     // Sorting
     const handleSort = (key) => {
@@ -204,7 +209,11 @@ export default function Movers() {
                 <div className="loading"><div className="spinner" /> Fetching {universe === 'nifty' ? 'Nifty 50' : 'NSE'} movers…</div>
             )}
 
-            {data && (
+            {cloudLoading && (
+                <div className="loading"><div className="spinner" /> Loading from cloud…</div>
+            )}
+
+            {data && !cloudLoading && (
                 <>
                     {/* ── Top 20 Winners / Losers side-by-side ── */}
                     <div className="grid-2 mb-24">

@@ -1,16 +1,35 @@
-import { useState, useCallback } from 'react';
-import { fetchScreener, SCREENER_PRESETS } from '../utils/api';
+import { useState, useCallback, useEffect } from 'react';
+import { fetchScreener, SCREENER_PRESETS, getCloudStore, setCloudStore } from '../utils/api';
 
 const fmt = (v) => typeof v === 'number' ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : (v ?? '—');
 
 export default function Screener() {
-    const [preset, setPreset] = useState(() => localStorage.getItem('indstk_scr_preset') || SCREENER_PRESETS[0].id);
-    const [universe, setUniverse] = useState(() => localStorage.getItem('indstk_scr_univ') || 'nifty');
-    const [data, setData] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('indstk_scr_data')) || null; } catch { return null; }
-    });
+    const [preset, setPreset] = useState(SCREENER_PRESETS[0].id);
+    const [universe, setUniverse] = useState('nifty');
+    const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [cloudLoading, setCloudLoading] = useState(true);
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        let mounted = true;
+        async function loadCloud() {
+            setCloudLoading(true);
+            const [p, u, d] = await Promise.all([
+                getCloudStore('indstk_scr_preset'),
+                getCloudStore('indstk_scr_univ'),
+                getCloudStore('indstk_scr_data')
+            ]);
+            if (mounted) {
+                if (p) setPreset(p);
+                if (u) setUniverse(u);
+                if (d) setData(d);
+                setCloudLoading(false);
+            }
+        }
+        loadCloud();
+        return () => { mounted = false; };
+    }, []);
 
     const currentPreset = SCREENER_PRESETS.find(p => p.id === preset) || SCREENER_PRESETS[0];
 
@@ -21,9 +40,9 @@ export default function Screener() {
             const rows = await fetchScreener(preset, universe);
             if (rows[0]?.error) throw new Error(rows[0].error);
             setData(rows || []);
-            localStorage.setItem('indstk_scr_data', JSON.stringify(rows || []));
-            localStorage.setItem('indstk_scr_preset', preset);
-            localStorage.setItem('indstk_scr_univ', universe);
+            setCloudStore('indstk_scr_data', rows || []);
+            setCloudStore('indstk_scr_preset', preset);
+            setCloudStore('indstk_scr_univ', universe);
         } catch (e) {
             setError(e.message || 'Screener failed');
         } finally {
@@ -37,8 +56,11 @@ export default function Screener() {
                 <h2>🎯 Stock Screener</h2>
                 <p>13 pre-built strategies · inspired by Screener.in · Nifty 50 or broader NSE</p>
             </div>
+            {cloudLoading && <div className="loading"><div className="spinner" /> Loading from cloud…</div>}
 
-            <div className="flex gap-12 mb-8" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            {!cloudLoading && (
+                <>
+                    <div className="flex gap-12 mb-8" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div className="input-group" style={{ flex: 2, minWidth: 280 }}>
                     <label>Screener Preset</label>
                     <select className="select" value={preset} onChange={e => setPreset(e.target.value)}>
@@ -145,11 +167,13 @@ export default function Screener() {
                 </div>
             )}
 
-            {!loading && !data && (
-                <div className="empty" style={{ border: '1px dashed var(--border)', borderRadius: 8 }}>
-                    <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🎯</div>
-                    Select a preset above and click <strong>Run Screener</strong>
-                </div>
+                    {!loading && !data && (
+                        <div className="empty" style={{ border: '1px dashed var(--border)', borderRadius: 8 }}>
+                            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🎯</div>
+                            Select a preset above and click <strong>Run Screener</strong>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );

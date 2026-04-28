@@ -126,3 +126,24 @@ export const TICKER_DIRECTORY = {
 
 // Sorted list of all tickers for dropdown/search
 export const ALL_SYMBOLS = Object.keys(TICKER_DIRECTORY).sort();
+
+export async function getCloudStore(key) {
+    try {
+        const res = await fetch(`/api/store?key=${key}`);
+        if (res.ok) {
+            const json = await res.json();
+            return json.data !== undefined ? json.data : null;
+        }
+    } catch { /* ignore */ }
+    return null;
+}
+
+export async function setCloudStore(key, value) {
+    try {
+        await fetch('/api/store', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value }),
+        });
+    } catch { /* ignore */ }
+}

@@ -285,7 +285,35 @@ def api_portfolio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ── /api/store ─────────────────────────────────────────────────────────────
+_spec_store = _ilu.spec_from_file_location("store_api", _os.path.join(_os.path.dirname(__file__), "api", "store.py"))
+_pmod_store = _ilu.module_from_spec(_spec_store)
+_spec_store.loader.exec_module(_pmod_store)
 
+@app.route("/api/store", methods=["GET", "POST", "OPTIONS"])
+def api_store():
+    if request.method == "OPTIONS":
+        resp = app.make_response("")
+        resp.headers["Access-Control-Allow-Origin"]  = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+    
+    try:
+        if request.method == "GET":
+            key = request.args.get("key", "")
+            val = _pmod_store.get_data(key)
+            return jsonify({"data": val})
+        elif request.method == "POST":
+            payload = request.get_json(force=True, silent=True) or {}
+            key = payload.get("key")
+            value = payload.get("value")
+            if not key or value is None:
+                return jsonify({"error": "Key and value required"}), 400
+            _pmod_store.set_data(key, value)
+            return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ── CORS headers on all responses ──────────────────────────────────────────────
 

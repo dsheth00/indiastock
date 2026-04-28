@@ -1,26 +1,39 @@
 import { useState, useEffect } from 'react';
-import { DEFAULT_WATCHLISTS, fetchQuote, ALL_SYMBOLS } from '../utils/api';
+import { DEFAULT_WATCHLISTS, fetchQuote, ALL_SYMBOLS, getCloudStore, setCloudStore } from '../utils/api';
 import Portfolio from './Portfolio';
 
 export default function Dashboard() {
     const [activeSubTab, setActiveSubTab] = useState('portfolio');
-    const [quotes, setQuotes] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('indstk_wl_quotes')) || {}; } catch { return {}; }
-    });
+    const [quotes, setQuotes] = useState({});
     const [quotesLoading, setQuotesLoading] = useState(false);
-    const [quotesLoaded, setQuotesLoaded] = useState(Object.keys(quotes).length > 0);
+    const [quotesLoaded, setQuotesLoaded] = useState(false);
+    const [watchlists, setWatchlists] = useState(DEFAULT_WATCHLISTS);
+    const [cloudLoading, setCloudLoading] = useState(true);
 
-    const [watchlists, setWatchlists] = useState(() => {
-        const saved = localStorage.getItem('indstk_watchlists');
-        if (saved) {
-            try { return JSON.parse(saved); } catch { /* ignore */ }
+    useEffect(() => {
+        let mounted = true;
+        async function loadCloud() {
+            setCloudLoading(true);
+            const [wl, q] = await Promise.all([
+                getCloudStore('indstk_watchlists'),
+                getCloudStore('indstk_wl_quotes')
+            ]);
+            if (mounted) {
+                if (wl) setWatchlists(wl);
+                if (q) {
+                    setQuotes(q);
+                    setQuotesLoaded(Object.keys(q).length > 0);
+                }
+                setCloudLoading(false);
+            }
         }
-        return DEFAULT_WATCHLISTS;
-    });
+        loadCloud();
+        return () => { mounted = false; };
+    }, []);
 
     const saveWatchlists = (newWl) => {
         setWatchlists(newWl);
-        localStorage.setItem('indstk_watchlists', JSON.stringify(newWl));
+        setCloudStore('indstk_watchlists', newWl);
     };
 
     const loadWatchlistQuotes = async () => {
@@ -37,7 +50,7 @@ export default function Dashboard() {
             })
         );
         setQuotes(q);
-        localStorage.setItem('indstk_wl_quotes', JSON.stringify(q));
+        setCloudStore('indstk_wl_quotes', q);
         setQuotesLoading(false);
         setQuotesLoaded(true);
     };
@@ -79,7 +92,11 @@ export default function Dashboard() {
 
             {activeSubTab === 'portfolio' && <Portfolio />}
 
-            {activeSubTab === 'watchlists' && (
+            {activeSubTab === 'watchlists' && cloudLoading && (
+                <div className="loading"><div className="spinner" /> Loading from cloud…</div>
+            )}
+
+            {activeSubTab === 'watchlists' && !cloudLoading && (
                 <div>
                     <div className="flex gap-12 items-center mb-24">
                         <button className="btn btn-primary" onClick={loadWatchlistQuotes} disabled={quotesLoading}>

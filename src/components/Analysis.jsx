@@ -1,22 +1,41 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart } from 'lightweight-charts';
-import { fetchFundamentals, fetchHistory, NIFTY_50, CHART_PERIODS, TICKER_DIRECTORY, ALL_SYMBOLS } from '../utils/api';
+import { fetchFundamentals, fetchHistory, NIFTY_50, CHART_PERIODS, TICKER_DIRECTORY, ALL_SYMBOLS, getCloudStore, setCloudStore } from '../utils/api';
 
 export default function Analysis() {
-    const [ticker, setTicker]   = useState(() => localStorage.getItem('indstk_ana_ticker') || 'HDFCBANK');
+    const [ticker, setTicker]   = useState('HDFCBANK');
     const [input, setInput]     = useState('');
     const [suggestions, setSuggestions] = useState([]);
-    const [period, setPeriod]   = useState(() => localStorage.getItem('indstk_ana_period') || '1y');
-    const [fund, setFund]       = useState(() => {
-        try { return JSON.parse(localStorage.getItem('indstk_ana_fund')) || null; } catch { return null; }
-    });
-    const [histData, setHistData] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('indstk_ana_hist')) || []; } catch { return []; }
-    });
+    const [period, setPeriod]   = useState('1y');
+    const [fund, setFund]       = useState(null);
+    const [histData, setHistData] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [cloudLoading, setCloudLoading] = useState(true);
     const [error, setError]     = useState('');
     const chartRef              = useRef(null);
     const chartInstance         = useRef(null);
+
+    useEffect(() => {
+        let mounted = true;
+        async function loadCloud() {
+            setCloudLoading(true);
+            const [t, p, f, h] = await Promise.all([
+                getCloudStore('indstk_ana_ticker'),
+                getCloudStore('indstk_ana_period'),
+                getCloudStore('indstk_ana_fund'),
+                getCloudStore('indstk_ana_hist')
+            ]);
+            if (mounted) {
+                if (t) setTicker(t);
+                if (p) setPeriod(p);
+                if (f) setFund(f);
+                if (h) setHistData(h);
+                setCloudLoading(false);
+            }
+        }
+        loadCloud();
+        return () => { mounted = false; };
+    }, []);
 
     const load = useCallback(async (sym, p) => {
         setLoading(true);
@@ -30,10 +49,10 @@ export default function Analysis() {
             setFund(f);
             setHistData(h.data || []);
             
-            localStorage.setItem('indstk_ana_fund', JSON.stringify(f));
-            localStorage.setItem('indstk_ana_hist', JSON.stringify(h.data || []));
-            localStorage.setItem('indstk_ana_ticker', sym);
-            localStorage.setItem('indstk_ana_period', p);
+            setCloudStore('indstk_ana_fund', f);
+            setCloudStore('indstk_ana_hist', h.data || []);
+            setCloudStore('indstk_ana_ticker', sym);
+            setCloudStore('indstk_ana_period', p);
         } catch (e) {
             setError(e.message || 'Failed to load data');
         } finally {
@@ -212,9 +231,11 @@ export default function Analysis() {
             </div>
 
             {error && <div className="error-box mb-24">{error}</div>}
-            {loading && <div className="loading"><div className="spinner" /> Loading {ticker}…</div>}
+            
+            {cloudLoading && <div className="loading"><div className="spinner" /> Loading from cloud…</div>}
+            {loading && !cloudLoading && <div className="loading"><div className="spinner" /> Loading {ticker}…</div>}
 
-            {!loading && fund && (
+            {!loading && !cloudLoading && fund && (
                 <>
                     {/* Company name + link */}
                     <div className="flex items-center gap-12 mb-24" style={{ flexWrap: 'wrap' }}>

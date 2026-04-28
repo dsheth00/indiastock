@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // Forward all /api/* requests to the local Python dev server
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
         rewrite: (path) => path,  // keep /api prefix — Flask routes match it
       },

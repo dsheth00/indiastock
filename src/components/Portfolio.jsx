@@ -3,7 +3,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, ReferenceLine, Cell, Legend,
 } from 'recharts';
-import { getCloudStore, setCloudStore } from '../utils/api';
+import { getCloudStore, setCloudStore, ALL_SYMBOLS } from '../utils/api';
 
 const CSV_KEY  = 'indstk_port_csv';  // raw CSV text
 const DATA_KEY = 'indstk_port_data'; // last parsed result (stale prices)
@@ -66,6 +66,9 @@ export default function Portfolio() {
     const [error,      setError]      = useState('');
     const [lastUpdate, setLastUpdate] = useState(null);
     const [csvTextData, setCsvTextData] = useState('');
+    const [manualTrades, setManualTrades] = useState([]);
+    const [showTradeForm, setShowTradeForm] = useState(false);
+    const [tradeForm, setTradeForm] = useState({ ticker: 'HDFCBANK', qty: '', price: '' });
     const [chartType, setChartType] = useState('pnl');
     const fileRef = useRef(null);
 
@@ -73,12 +76,14 @@ export default function Portfolio() {
         let mounted = true;
         async function loadCloud() {
             setCloudLoading(true);
-            const [csv, data] = await Promise.all([
+            const [csv, data, trades] = await Promise.all([
                 getCloudStore(CSV_KEY),
-                getCloudStore(DATA_KEY)
+                getCloudStore(DATA_KEY),
+                getCloudStore('indstk_manual_trades')
             ]);
             if (mounted) {
                 if (csv) setCsvTextData(csv);
+                if (trades) setManualTrades(trades);
                 if (data) {
                     setPositions(data.positions || []);
                     setSummary(data.summary || null);
@@ -92,11 +97,18 @@ export default function Portfolio() {
     }, []);
 
     // Core: parse CSV via API, persist everything
-    const process = useCallback(async (csvText, silent = false) => {
+    const process = useCallback(async (csvText, trades = [], silent = false) => {
         if (silent) setRefreshing(true); else setLoading(true);
         setError('');
         try {
-            const result = await parseCsv(csvText);
+            let finalCsv = csvText || '';
+            if (trades.length > 0) {
+                finalCsv += '\n';
+                trades.forEach(t => {
+                    finalCsv += `${t.ticker}\n-\n${t.qty >= 0 ? 'Buy' : 'Sell'}\n0\t0\t${t.price}\t${Math.abs(t.qty)}\t0\tExecuted\n`;
+                });
+            }
+            const result = await parseCsv(finalCsv);
             const updatedAt = new Date().toLocaleTimeString('en-IN', {
                 timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit'
             }) + ' IST';
@@ -104,9 +116,9 @@ export default function Portfolio() {
             setPositions(result.positions || []);
             setSummary(result.summary || null);
             setLastUpdate(updatedAt);
-            setCsvTextData(csvText);
+            setCsvTextData(csvText || '');
             // Persist both CSV and parsed data
-            setCloudStore(CSV_KEY, csvText);
+            setCloudStore(CSV_KEY, csvText || '');
             setCloudStore(DATA_KEY, result);
         } catch (e) {
             if (!silent) setError(e.message || 'Failed to parse portfolio');
@@ -125,8 +137,30 @@ export default function Portfolio() {
         if (!file) return;
         e.target.value = ''; // allow re-upload of same file
         const reader = new FileReader();
-        reader.onload = (ev) => process(ev.target.result, false);
+        reader.onload = (ev) => process(ev.target.result, manualTrades, false);
         reader.readAsText(file);
+    };
+
+    const handleUnlockAddTrade = () => {
+        const code = prompt("Enter passcode to unlock manual trades:");
+        if (code === 'drs12papa') {
+            setShowTradeForm(true);
+        } else if (code !== null) {
+            alert('Incorrect passcode');
+        }
+    };
+
+    const submitTrade = () => {
+        const qty = parseFloat(tradeForm.qty);
+        const price = parseFloat(tradeForm.price);
+        if (!qty || !price || price <= 0) return alert('Invalid qty or price');
+        const newTrade = { ticker: tradeForm.ticker, qty, price, id: Date.now() };
+        const updated = [...manualTrades, newTrade];
+        setManualTrades(updated);
+        setCloudStore('indstk_manual_trades', updated);
+        setShowTradeForm(false);
+        setTradeForm({ ticker: 'HDFCBANK', qty: '', price: '' });
+        process(csvTextData, updated, false);
     };
 
     const hasData = positions.length > 0 && summary;
@@ -156,11 +190,15 @@ export default function Portfolio() {
                     📂 Upload port.csv
                 </button>
 
-                {csvTextData && (
-                    <button className="btn" onClick={() => process(csvTextData, false)} disabled={loading || refreshing || cloudLoading}>
+                {(csvTextData || manualTrades.length > 0) && (
+                    <button className="btn" onClick={() => process(csvTextData, manualTrades, false)} disabled={loading || refreshing || cloudLoading}>
                         🔄 Force Refresh Prices
                     </button>
                 )}
+
+                <button className="btn" onClick={handleUnlockAddTrade} disabled={loading || cloudLoading} style={{ background: 'var(--bg-card)', border: '1px dashed var(--border)' }}>
+                    ➕ Add Trade
+                </button>
 
                 {/* Status indicators */}
                 <div className="flex gap-8 items-center" style={{ marginLeft: 'auto' }}>
@@ -182,6 +220,29 @@ export default function Portfolio() {
             </div>
 
             {error && <div className="error-box mb-24">{error}</div>}
+
+            {showTradeForm && (
+                <div className="card mb-24" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', border: '1px solid var(--accent)' }}>
+                    <div className="input-group" style={{ flex: 1, minWidth: 150 }}>
+                        <label>Ticker</label>
+                        <select className="select" value={tradeForm.ticker} onChange={e => setTradeForm({ ...tradeForm, ticker: e.target.value })}>
+                            {ALL_SYMBOLS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </div>
+                    <div className="input-group" style={{ width: 140 }}>
+                        <label>Qty (+Buy, -Sell)</label>
+                        <input className="input" type="number" placeholder="e.g. 10 or -5" value={tradeForm.qty} onChange={e => setTradeForm({ ...tradeForm, qty: e.target.value })} />
+                    </div>
+                    <div className="input-group" style={{ width: 120 }}>
+                        <label>Avg Price (₹)</label>
+                        <input className="input" type="number" step="0.05" placeholder="0.00" value={tradeForm.price} onChange={e => setTradeForm({ ...tradeForm, price: e.target.value })} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-primary" onClick={submitTrade}>Confirm Trade</button>
+                        <button className="btn" onClick={() => setShowTradeForm(false)}>Cancel</button>
+                    </div>
+                </div>
+            )}
 
             {cloudLoading && (
                 <div className="loading"><div className="spinner" /> Loading portfolio from cloud…</div>

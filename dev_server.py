@@ -256,75 +256,18 @@ def api_screener():
 
 
 # ── /api/portfolio ─────────────────────────────────────────────────────────────
-
-def parse_portfolio_lines(lines):
-    records = []
-    for k in range(len(lines)):
-        line = lines[k].strip()
-        if line in ("Buy", "Sell"):
-            if k >= 2 and k + 2 < len(lines):
-                stock_name = lines[k - 2].strip().replace(" DELIVERY", "").replace(" MTF", "")
-                action  = line
-                vals    = lines[k + 1].split("\t")
-                if len(vals) >= 6:
-                    ltp         = _clean_num(vals[0])
-                    trade_price = _clean_num(vals[2])
-                    qty         = _clean_num(vals[3])
-                    status      = vals[5].strip()
-                    if status == "Executed" and qty > 0 and trade_price > 0:
-                        records.append({"stock": stock_name, "action": action,
-                                        "ltp": ltp, "tradePrice": trade_price, "qty": qty})
-
-    port: dict = {}
-    for r in reversed(records):
-        stk = r["stock"]
-        if stk not in port:
-            port[stk] = {"qty": 0.0, "invested": 0.0, "ltp": r["ltp"], "realized": 0.0}
-        q, tp = r["qty"], r["tradePrice"]
-        if r["action"] == "Buy":
-            port[stk]["qty"]      += q
-            port[stk]["invested"] += tp * q
-        elif r["action"] == "Sell" and port[stk]["qty"] > 0:
-            avg = port[stk]["invested"] / port[stk]["qty"]
-            port[stk]["realized"] += (tp - avg) * q
-            port[stk]["qty"]      -= q
-            port[stk]["invested"] -= avg * q
-            if port[stk]["qty"]      < 0: port[stk]["qty"]      = 0.0
-            if port[stk]["invested"] < 0: port[stk]["invested"] = 0.0
-
-    positions = []
-    summary = {"totalInvested": 0.0, "totalCurrent": 0.0, "totalUnrealized": 0.0, "totalRealized": 0.0}
-    for stk, d in port.items():
-        inv = d["invested"]
-        cur = d["ltp"] * d["qty"]
-        unr = cur - inv
-        total_gain = unr + d["realized"]
-        positions.append({
-            "stock": stk, "qty": int(d["qty"]),
-            "avgPrice": round(inv / d["qty"], 2) if d["qty"] > 0 else 0,
-            "ltp": round(d["ltp"], 2), "invested": round(inv, 2),
-            "current": round(cur, 2), "unrealized": round(unr, 2),
-            "realized": round(d["realized"], 2), "totalPnl": round(total_gain, 2),
-            "pnlPct": round(total_gain / inv * 100, 2) if inv > 0 else 0,
-        })
-        summary["totalInvested"]   += inv
-        summary["totalCurrent"]    += cur
-        summary["totalUnrealized"] += unr
-        summary["totalRealized"]   += d["realized"]
-
-    positions.sort(key=lambda x: x["invested"], reverse=True)
-    for k in summary:
-        summary[k] = round(summary[k], 2)
-    summary["totalPnl"] = round(summary["totalUnrealized"] + summary["totalRealized"], 2)
-    summary["totalPnlPct"] = round(summary["totalPnl"] / summary["totalInvested"] * 100, 2) if summary["totalInvested"] > 0 else 0
-    return {"positions": positions, "summary": summary}
-
+# Import the shared logic from api/portfolio.py (same code as Vercel function)
+import importlib.util as _ilu
+import os as _os
+_spec = _ilu.spec_from_file_location("portfolio_api", _os.path.join(_os.path.dirname(__file__), "api", "portfolio.py"))
+_pmod = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_pmod)
 
 @app.route("/api/portfolio", methods=["GET", "POST", "OPTIONS"])
 def api_portfolio():
     if request.method == "OPTIONS":
         resp = app.make_response("")
-        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Origin"]  = "*"
         resp.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
@@ -333,15 +276,15 @@ def api_portfolio():
             "totalInvested": 0, "totalCurrent": 0, "totalUnrealized": 0,
             "totalRealized": 0, "totalPnl": 0, "totalPnlPct": 0
         }})
-    # POST
+    # POST — delegate to shared api/portfolio.py logic
     try:
-        payload = request.get_json(force=True, silent=True) or {}
+        payload  = request.get_json(force=True, silent=True) or {}
         csv_text = payload.get("csv", "")
-        lines = csv_text.splitlines()
-        result = parse_portfolio_lines(lines)
+        result   = _pmod.full_parse(csv_text)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 # ── CORS headers on all responses ──────────────────────────────────────────────

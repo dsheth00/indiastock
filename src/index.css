@@ -1,24 +1,26 @@
 :root {
-  --bg: #fafbfc;
+  --bg: #fdfdfd;
   --bg-card: #ffffff;
-  --bg-hover: #f1f5f9;
-  --bg-active: #eff6ff;
-  --border: #e2e8f0;
-  --border-focus: #93c5fd;
-  --text: #0f172a;
-  --text-2: #475569;
-  --text-3: #94a3b8;
-  --accent: #2563eb;
-  --accent-light: #dbeafe;
-  --green: #16a34a;
-  --green-bg: #f0fdf4;
-  --red: #dc2626;
+  --bg-hover: #f9fafb;
+  --bg-active: #f3f4f6;
+  --border: #e5e7eb;
+  --border-focus: #c084fc;
+  --text: #1f2937;
+  --text-2: #4b5563;
+  --text-3: #9ca3af;
+  --accent: #8b5cf6;
+  --accent-light: #ede9fe;
+  --accent-gradient: linear-gradient(135deg, #10b981 0%, #8b5cf6 100%);
+  --accent-gradient-hover: linear-gradient(135deg, #059669 0%, #7c3aed 100%);
+  --green: #10b981;
+  --green-bg: #ecfdf5;
+  --red: #ef4444;
   --red-bg: #fef2f2;
-  --radius: 8px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .05);
-  --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, .07);
-  --transition: 150ms ease;
+  --radius: 12px;
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, .02);
+  --shadow: 0 4px 6px rgba(0, 0, 0, .03), 0 2px 4px rgba(0, 0, 0, .02);
+  --shadow-md: 0 10px 15px rgba(0, 0, 0, .04);
+  --transition: 200ms ease;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 }
@@ -112,7 +114,10 @@ a:hover {
 }
 
 .logo-dot {
-  color: var(--accent);
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .logo-tag {
@@ -159,9 +164,10 @@ a:hover {
 }
 
 .tab.active {
-  background: var(--accent);
+  background: var(--accent-gradient);
   color: #fff;
   font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── Cards ──────────────────────────────────────────────── */
@@ -295,16 +301,16 @@ a:hover {
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--accent-gradient);
   color: #fff;
-  border-color: var(--accent);
+  border: none;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
 }
 
 .btn-primary:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, .25);
+  background: var(--accent-gradient-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
 }
 
 .btn:disabled {

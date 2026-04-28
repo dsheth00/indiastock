@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { DEFAULT_WATCHLISTS, fetchQuote } from '../utils/api';
+import { DEFAULT_WATCHLISTS, fetchQuote, ALL_SYMBOLS } from '../utils/api';
 import Portfolio from './Portfolio';
 
 export default function Dashboard() {
@@ -8,10 +8,23 @@ export default function Dashboard() {
     const [quotesLoading, setQuotesLoading] = useState(false);
     const [quotesLoaded, setQuotesLoaded] = useState(false);
 
+    const [watchlists, setWatchlists] = useState(() => {
+        const saved = localStorage.getItem('indstk_watchlists');
+        if (saved) {
+            try { return JSON.parse(saved); } catch { /* ignore */ }
+        }
+        return DEFAULT_WATCHLISTS;
+    });
+
+    const saveWatchlists = (newWl) => {
+        setWatchlists(newWl);
+        localStorage.setItem('indstk_watchlists', JSON.stringify(newWl));
+    };
+
     const loadWatchlistQuotes = async () => {
         setQuotesLoading(true);
         const allSyms = new Set();
-        Object.values(DEFAULT_WATCHLISTS).forEach(list => list.forEach(t => allSyms.add(t)));
+        Object.values(watchlists).forEach(list => list.forEach(t => allSyms.add(t)));
         const q = {};
         await Promise.all(
             Array.from(allSyms).map(async (t) => {
@@ -30,7 +43,7 @@ export default function Dashboard() {
         if (activeSubTab === 'watchlists' && !quotesLoaded) {
             loadWatchlistQuotes();
         }
-    }, [activeSubTab, quotesLoaded]);
+    }, [activeSubTab, quotesLoaded, watchlists]);
 
     const fmtPrice = (v) => typeof v === 'number' ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
 
@@ -90,16 +103,16 @@ export default function Dashboard() {
 
                     {!quotesLoading && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                            {Object.entries(DEFAULT_WATCHLISTS).map(([name, tickers]) => (
+                            {Object.entries(watchlists).map(([name, tickers]) => (
                                 <div key={name} className="card">
                                     <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 14 }}>{name}</div>
-                                    <div className="chip-grid">
+                                    <div className="chip-grid mb-12">
                                         {tickers.map(t => {
                                             const q = quotes[t];
                                             const chg = q?.changePct ?? null;
                                             const color = chg === null ? 'var(--text-3)' : chg >= 0 ? 'var(--green)' : 'var(--red)';
                                             return (
-                                                <div key={t} className="chip">
+                                                <div key={t} className="chip" style={{ position: 'relative' }}>
                                                     <span className="chip-sym">{t}</span>
                                                     <span className="chip-price">
                                                         {q?.price ? `₹${fmtPrice(q.price)}` : '—'}
@@ -109,9 +122,46 @@ export default function Dashboard() {
                                                             {chg >= 0 ? '▲' : '▼'}{Math.abs(chg).toFixed(1)}%
                                                         </span>
                                                     )}
+                                                    <button 
+                                                        style={{
+                                                            position: 'absolute', top: -4, right: -4, background: 'var(--red)',
+                                                            color: 'white', border: 'none', borderRadius: '50%',
+                                                            width: 14, height: 14, display: 'flex', alignItems: 'center',
+                                                            justifyContent: 'center', fontSize: 10, cursor: 'pointer', lineHeight: 1
+                                                        }}
+                                                        onClick={() => {
+                                                            const newWl = { ...watchlists };
+                                                            newWl[name] = newWl[name].filter(sym => sym !== t);
+                                                            saveWatchlists(newWl);
+                                                        }}
+                                                    >✕</button>
                                                 </div>
                                             );
                                         })}
+                                        {tickers.length === 0 && <span className="text-3 text-sm">Empty watchlist</span>}
+                                    </div>
+                                    <div style={{ maxWidth: 300 }}>
+                                        <select 
+                                            className="select" 
+                                            style={{ fontSize: '.8rem', padding: '6px 10px' }}
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    const newWl = { ...watchlists };
+                                                    if (!newWl[name].includes(e.target.value)) {
+                                                        newWl[name] = [...newWl[name], e.target.value];
+                                                        saveWatchlists(newWl);
+                                                    }
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        >
+                                            <option value="">➕ Manage List (Add stocks...)</option>
+                                            {ALL_SYMBOLS.map(sym => (
+                                                <option key={sym} value={sym} disabled={tickers.includes(sym)}>
+                                                    {sym}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
                             ))}

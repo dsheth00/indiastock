@@ -171,9 +171,9 @@ export default function Analysis() {
                 </div>
 
                 <div className="input-group" style={{ minWidth: 220 }}>
-                    <label>Or pick from directory (756 stocks)</label>
+                    <label>Or pick from directory ({ALL_SYMBOLS.length} stocks)</label>
                     <select className="select" value={ticker} onChange={e => { setTicker(e.target.value); setInput(''); }}>
-                        {NIFTY_50.map(s => (
+                        {ALL_SYMBOLS.map(s => (
                             <option key={s} value={s}>{s} — {TICKER_DIRECTORY[s] || s}</option>
                         ))}
                     </select>

@@ -80,8 +80,6 @@ export default function Movers() {
         if (cached) {
             setData(cached.data);
             setFetchedAt(cached.time);
-            // If market is open, do a silent background refresh so data stays fresh
-            if (getMarketStatus().open) load(true);
         } else {
             setData(null);
             setFetchedAt(null);

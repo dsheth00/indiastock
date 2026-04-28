@@ -96,15 +96,9 @@ export default function Portfolio() {
         }
     }, []);
 
-    // On mount: if persisted CSV exists, silently re-parse to get fresh LTP prices
-    useEffect(() => {
-        const saved = localStorage.getItem(CSV_KEY);
-        if (saved) {
-            // Show stale cached data immediately (done via useState init above)
-            // Then silently refresh to get latest prices
-            process(saved, true);
-        }
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // On mount: we rely entirely on the initial state from DATA_KEY.
+    // The user explicitly requested to persist the tickers until overridden by another batch.
+    // We will not auto-refresh on mount to avoid unnecessary API calls and delays.
 
     // File upload → override persisted CSV
     const handleFileRead = (e) => {

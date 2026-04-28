@@ -3,36 +3,43 @@ import { createChart } from 'lightweight-charts';
 import { fetchFundamentals, fetchHistory, NIFTY_50, CHART_PERIODS, TICKER_DIRECTORY, ALL_SYMBOLS } from '../utils/api';
 
 export default function Analysis() {
-    const [ticker, setTicker]   = useState('HDFCBANK');
+    const [ticker, setTicker]   = useState(() => localStorage.getItem('indstk_ana_ticker') || 'HDFCBANK');
     const [input, setInput]     = useState('');
     const [suggestions, setSuggestions] = useState([]);
-    const [period, setPeriod]   = useState('1y');
-    const [fund, setFund]       = useState(null);
-    const [histData, setHistData] = useState([]);
+    const [period, setPeriod]   = useState(() => localStorage.getItem('indstk_ana_period') || '1y');
+    const [fund, setFund]       = useState(() => {
+        try { return JSON.parse(localStorage.getItem('indstk_ana_fund')) || null; } catch { return null; }
+    });
+    const [histData, setHistData] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('indstk_ana_hist')) || []; } catch { return []; }
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError]     = useState('');
     const chartRef              = useRef(null);
     const chartInstance         = useRef(null);
 
-    const load = useCallback(async (sym) => {
+    const load = useCallback(async (sym, p) => {
         setLoading(true);
         setError('');
         try {
             const [f, h] = await Promise.all([
                 fetchFundamentals(sym),
-                fetchHistory(sym, period),
+                fetchHistory(sym, p),
             ]);
             if (f.error) throw new Error(f.error);
             setFund(f);
             setHistData(h.data || []);
+            
+            localStorage.setItem('indstk_ana_fund', JSON.stringify(f));
+            localStorage.setItem('indstk_ana_hist', JSON.stringify(h.data || []));
+            localStorage.setItem('indstk_ana_ticker', sym);
+            localStorage.setItem('indstk_ana_period', p);
         } catch (e) {
             setError(e.message || 'Failed to load data');
         } finally {
             setLoading(false);
         }
-    }, [period]);
-
-    useEffect(() => { load(ticker); }, [ticker, load]);
+    }, []);
 
     // Chart rendering
     useEffect(() => {
@@ -88,14 +95,17 @@ export default function Analysis() {
         setTicker(sym);
         setInput('');
         setSuggestions([]);
+        load(sym, period);
     };
 
     const handleSearch = (e) => {
         e.preventDefault();
         if (input.trim()) {
-            setTicker(input.trim().toUpperCase());
+            const sym = input.trim().toUpperCase();
+            setTicker(sym);
             setInput('');
             setSuggestions([]);
+            load(sym, period);
         }
     };
 
@@ -172,7 +182,12 @@ export default function Analysis() {
 
                 <div className="input-group" style={{ minWidth: 220 }}>
                     <label>Or pick from directory ({ALL_SYMBOLS.length} stocks)</label>
-                    <select className="select" value={ticker} onChange={e => { setTicker(e.target.value); setInput(''); }}>
+                    <select className="select" value={ticker} onChange={e => { 
+                        const sym = e.target.value;
+                        setTicker(sym); 
+                        setInput(''); 
+                        load(sym, period);
+                    }}>
                         {ALL_SYMBOLS.map(s => (
                             <option key={s} value={s}>{s} — {TICKER_DIRECTORY[s] || s}</option>
                         ))}
@@ -186,7 +201,7 @@ export default function Analysis() {
                             <button
                                 key={p}
                                 className={`btn ${period === p ? 'btn-primary' : ''}`}
-                                onClick={() => setPeriod(p)}
+                                onClick={() => { setPeriod(p); load(ticker, p); }}
                                 style={{ padding: '8px 12px', fontSize: '.78rem' }}
                             >
                                 {p === '1mo' ? '1M' : p === '3mo' ? '3M' : p === '6mo' ? '6M' : p.toUpperCase()}

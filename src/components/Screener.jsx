@@ -4,9 +4,11 @@ import { fetchScreener, SCREENER_PRESETS } from '../utils/api';
 const fmt = (v) => typeof v === 'number' ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : (v ?? '—');
 
 export default function Screener() {
-    const [preset, setPreset] = useState(SCREENER_PRESETS[0].id);
-    const [universe, setUniverse] = useState('nifty');
-    const [data, setData] = useState(null);
+    const [preset, setPreset] = useState(() => localStorage.getItem('indstk_scr_preset') || SCREENER_PRESETS[0].id);
+    const [universe, setUniverse] = useState(() => localStorage.getItem('indstk_scr_univ') || 'nifty');
+    const [data, setData] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('indstk_scr_data')) || null; } catch { return null; }
+    });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -19,6 +21,9 @@ export default function Screener() {
             const rows = await fetchScreener(preset, universe);
             if (rows[0]?.error) throw new Error(rows[0].error);
             setData(rows || []);
+            localStorage.setItem('indstk_scr_data', JSON.stringify(rows || []));
+            localStorage.setItem('indstk_scr_preset', preset);
+            localStorage.setItem('indstk_scr_univ', universe);
         } catch (e) {
             setError(e.message || 'Screener failed');
         } finally {

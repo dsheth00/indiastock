@@ -4,9 +4,11 @@ import Portfolio from './Portfolio';
 
 export default function Dashboard() {
     const [activeSubTab, setActiveSubTab] = useState('portfolio');
-    const [quotes, setQuotes] = useState({});
+    const [quotes, setQuotes] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('indstk_wl_quotes')) || {}; } catch { return {}; }
+    });
     const [quotesLoading, setQuotesLoading] = useState(false);
-    const [quotesLoaded, setQuotesLoaded] = useState(false);
+    const [quotesLoaded, setQuotesLoaded] = useState(Object.keys(quotes).length > 0);
 
     const [watchlists, setWatchlists] = useState(() => {
         const saved = localStorage.getItem('indstk_watchlists');
@@ -35,15 +37,10 @@ export default function Dashboard() {
             })
         );
         setQuotes(q);
+        localStorage.setItem('indstk_wl_quotes', JSON.stringify(q));
         setQuotesLoading(false);
         setQuotesLoaded(true);
     };
-
-    useEffect(() => {
-        if (activeSubTab === 'watchlists' && !quotesLoaded) {
-            loadWatchlistQuotes();
-        }
-    }, [activeSubTab, quotesLoaded, watchlists]);
 
     const fmtPrice = (v) => typeof v === 'number' ? v.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—';
 

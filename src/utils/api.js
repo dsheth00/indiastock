@@ -122,6 +122,9 @@ export const TICKER_DIRECTORY = {
     "ADAPOW":"Adani Power Ltd (abbr)","ADAPOR":"Adani Ports (abbr)","VEDLIM":"Vedanta Ltd (abbr)",
     "RELIND":"Reliance Industries (abbr)","INDWHO":"India Wholesale Ltd","OLAELE":"Ola Electric (abbr)",
     "WEBENE":"Web Energy Ltd","WIPRO":"Wipro Ltd",
+    "COHANCE":"Cohance Lifesciences Ltd", "SUZLON":"Suzlon Energy Ltd",
+    "IREDA":"IREDA", "JIOFIN":"Jio Financial Services", "MAZDOC":"Mazagon Dock",
+    "RVNL":"Rail Vikas Nigam Ltd", "IRFC":"Indian Railway Finance Corp",
 };
 
 // Sorted list of all tickers for dropdown/search

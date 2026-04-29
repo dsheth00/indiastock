@@ -155,27 +155,23 @@ export default function Dashboard() {
                                         {tickers.length === 0 && <span className="text-3 text-sm">Empty watchlist</span>}
                                     </div>
                                     <div style={{ maxWidth: 300 }}>
-                                        <select 
-                                            className="select" 
+                                        <input 
+                                            list="ticker-list"
+                                            className="input" 
+                                            placeholder="➕ Type to add (e.g. TCS)"
                                             style={{ fontSize: '.8rem', padding: '6px 10px' }}
                                             onChange={(e) => {
-                                                if (e.target.value) {
+                                                const val = e.target.value.toUpperCase();
+                                                if (val && (ALL_SYMBOLS.includes(val) || val.length > 2)) {
                                                     const newWl = { ...watchlists };
-                                                    if (!newWl[name].includes(e.target.value)) {
-                                                        newWl[name] = [...newWl[name], e.target.value];
+                                                    if (!newWl[name].includes(val)) {
+                                                        newWl[name] = [...newWl[name], val];
                                                         saveWatchlists(newWl);
                                                     }
                                                     e.target.value = '';
                                                 }
                                             }}
-                                        >
-                                            <option value="">➕ Manage List (Add stocks...)</option>
-                                            {ALL_SYMBOLS.map(sym => (
-                                                <option key={sym} value={sym} disabled={tickers.includes(sym)}>
-                                                    {sym}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        />
                                     </div>
                                 </div>
                             ))}

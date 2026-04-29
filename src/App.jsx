@@ -3,6 +3,7 @@ import Dashboard from './components/Dashboard';
 import Analysis from './components/Analysis';
 import Screener from './components/Screener';
 import Movers from './components/Movers';
+import { ALL_SYMBOLS, TICKER_DIRECTORY } from './utils/api';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -44,6 +45,12 @@ export default function App() {
         {activeTab === 'screener' && <Screener />}
         {activeTab === 'movers' && <Movers />}
       </main>
+
+      <datalist id="ticker-list">
+        {ALL_SYMBOLS.map(sym => (
+          <option key={sym} value={sym}>{TICKER_DIRECTORY[sym] || sym}</option>
+        ))}
+      </datalist>
     </div>
   );
 }

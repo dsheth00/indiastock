@@ -225,9 +225,13 @@ export default function Portfolio() {
                 <div className="card mb-24" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', border: '1px solid var(--accent)' }}>
                     <div className="input-group" style={{ flex: 1, minWidth: 150 }}>
                         <label>Ticker</label>
-                        <select className="select" value={tradeForm.ticker} onChange={e => setTradeForm({ ...tradeForm, ticker: e.target.value })}>
-                            {ALL_SYMBOLS.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
+                        <input 
+                            list="ticker-list"
+                            className="input" 
+                            placeholder="Type Ticker..."
+                            value={tradeForm.ticker} 
+                            onChange={e => setTradeForm({ ...tradeForm, ticker: e.target.value.toUpperCase() })} 
+                        />
                     </div>
                     <div className="input-group" style={{ width: 140 }}>
                         <label>Qty (+Buy, -Sell)</label>

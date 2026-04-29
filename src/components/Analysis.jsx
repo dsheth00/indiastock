@@ -201,16 +201,20 @@ export default function Analysis() {
 
                 <div className="input-group" style={{ minWidth: 220 }}>
                     <label>Or pick from directory ({ALL_SYMBOLS.length} stocks)</label>
-                    <select className="select" value={ticker} onChange={e => { 
-                        const sym = e.target.value;
-                        setTicker(sym); 
-                        setInput(''); 
-                        load(sym, period);
-                    }}>
-                        {ALL_SYMBOLS.map(s => (
-                            <option key={s} value={s}>{s} — {TICKER_DIRECTORY[s] || s}</option>
-                        ))}
-                    </select>
+                    <input 
+                        list="ticker-list"
+                        className="input" 
+                        placeholder="Search Directory..."
+                        value={ticker} 
+                        onChange={e => { 
+                            const sym = e.target.value.toUpperCase();
+                            if (sym && (ALL_SYMBOLS.includes(sym) || sym.length > 2)) {
+                                setTicker(sym); 
+                                setInput(''); 
+                                load(sym, period);
+                            }
+                        }}
+                    />
                 </div>
 
                 <div className="input-group">

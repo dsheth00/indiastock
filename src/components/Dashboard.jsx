@@ -19,7 +19,12 @@ export default function Dashboard() {
                 getCloudStore('indstk_wl_quotes')
             ]);
             if (mounted) {
-                if (wl) setWatchlists(wl);
+                if (wl) {
+                    // Merge: keep user's existing lists but ensure new defaults are present
+                    const merged = { ...DEFAULT_WATCHLISTS, ...wl };
+                    setWatchlists(merged);
+                }
+
                 if (q) {
                     setQuotes(q);
                     setQuotesLoaded(Object.keys(q).length > 0);

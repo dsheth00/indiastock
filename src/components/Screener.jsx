@@ -7,6 +7,7 @@ export default function Screener() {
     const [preset, setPreset] = useState(SCREENER_PRESETS[0].id);
     const [universe, setUniverse] = useState('nifty');
     const [data, setData] = useState(null);
+    const [fetchedAt, setFetchedAt] = useState(null);
     const [loading, setLoading] = useState(false);
     const [cloudLoading, setCloudLoading] = useState(true);
     const [error, setError] = useState('');
@@ -15,15 +16,17 @@ export default function Screener() {
         let mounted = true;
         async function loadCloud() {
             setCloudLoading(true);
-            const [p, u, d] = await Promise.all([
+            const [p, u, d, t] = await Promise.all([
                 getCloudStore('indstk_scr_preset'),
                 getCloudStore('indstk_scr_univ'),
-                getCloudStore('indstk_scr_data')
+                getCloudStore('indstk_scr_data'),
+                getCloudStore('indstk_scr_time')
             ]);
             if (mounted) {
                 if (p) setPreset(p);
                 if (u) setUniverse(u);
                 if (d) setData(d);
+                if (t) setFetchedAt(t);
                 setCloudLoading(false);
             }
         }
@@ -39,10 +42,13 @@ export default function Screener() {
         try {
             const rows = await fetchScreener(preset, universe);
             if (rows[0]?.error) throw new Error(rows[0].error);
+            const time = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' }) + ' IST';
             setData(rows || []);
+            setFetchedAt(time);
             setCloudStore('indstk_scr_data', rows || []);
             setCloudStore('indstk_scr_preset', preset);
             setCloudStore('indstk_scr_univ', universe);
+            setCloudStore('indstk_scr_time', time);
         } catch (e) {
             setError(e.message || 'Screener failed');
         } finally {
@@ -109,6 +115,7 @@ export default function Screener() {
                         </h3>
                         <span style={{ fontSize: '.78rem', color: 'var(--text-3)' }}>
                             Preset: {preset} · {universe === 'nifty' ? 'Nifty 50' : 'All NSE'}
+                            {fetchedAt && ` · Last run: ${fetchedAt}`}
                         </span>
                     </div>
                     <div className="table-wrap">

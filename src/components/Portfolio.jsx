@@ -150,11 +150,24 @@ export default function Portfolio() {
         }
     };
 
+    const deleteTrade = (id) => {
+        const updated = manualTrades.filter(t => t.id !== id);
+        setManualTrades(updated);
+        setCloudStore('indstk_manual_trades', updated);
+        process(csvTextData, updated, false);
+    };
+
     const submitTrade = () => {
         const qty = parseFloat(tradeForm.qty);
         const price = parseFloat(tradeForm.price);
         if (!qty || !price || price <= 0) return alert('Invalid qty or price');
-        const newTrade = { ticker: tradeForm.ticker, qty, price, id: Date.now() };
+        const newTrade = { 
+            ticker: tradeForm.ticker, 
+            qty, 
+            price, 
+            id: Date.now(),
+            date: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })
+        };
         const updated = [...manualTrades, newTrade];
         setManualTrades(updated);
         setCloudStore('indstk_manual_trades', updated);
@@ -380,6 +393,56 @@ export default function Portfolio() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* ── Trade History Log ── */}
+                    {manualTrades.length > 0 && (
+                        <div style={{ marginTop: 40 }}>
+                            <h3 style={{ fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                📜 Manual Trade Log
+                                <span style={{ fontSize: '.75rem', fontWeight: 500, color: 'var(--text-3)' }}>({manualTrades.length} trades)</span>
+                            </h3>
+                            <div className="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Ticker</th>
+                                            <th>Action</th>
+                                            <th>Qty</th>
+                                            <th>Price</th>
+                                            <th>Total</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {[...manualTrades].reverse().map(t => (
+                                            <tr key={t.id}>
+                                                <td className="text-3 text-sm">{t.date || '—'}</td>
+                                                <td className="mono" style={{ fontWeight: 700 }}>{t.ticker}</td>
+                                                <td>
+                                                    <span className={`badge ${t.qty >= 0 ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '.7rem' }}>
+                                                        {t.qty >= 0 ? 'BUY' : 'SELL'}
+                                                    </span>
+                                                </td>
+                                                <td className="mono">{Math.abs(t.qty)}</td>
+                                                <td className="mono">₹{fmt(t.price)}</td>
+                                                <td className="mono">₹{fmt(Math.abs(t.qty * t.price))}</td>
+                                                <td>
+                                                    <button 
+                                                        className="btn" 
+                                                        style={{ padding: '2px 8px', fontSize: '.7rem', color: 'var(--red)', borderColor: 'var(--red)', opacity: 0.7 }}
+                                                        onClick={() => { if(confirm('Delete this trade?')) deleteTrade(t.id); }}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
         </div>

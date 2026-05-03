@@ -23,8 +23,7 @@ async function readCloudCache(universe) {
     try {
         const raw = await getCloudStore(`indstk_movers_${universe}`);
         if (!raw) return null;
-        if (raw.date !== getISTDate()) return null; // stale — new IST day
-        return { data: raw.data, time: raw.time };
+        return { data: raw.data, time: raw.time, date: raw.date };
     } catch { return null; }
 }
 
@@ -42,6 +41,7 @@ export default function Movers() {
     // Init from cache immediately — no flicker
     const [data,      setData]      = useState(null);
     const [fetchedAt, setFetchedAt] = useState(null);
+    const [fetchedDate, setFetchedDate] = useState(null);
     const [loading,   setLoading]   = useState(false);
     const [cloudLoading, setCloudLoading] = useState(true);
     const [bgLoading, setBgLoading] = useState(false); // silent background refresh indicator
@@ -66,6 +66,7 @@ export default function Movers() {
             const time = await writeCloudCache(universe, rows);
             setData(rows);
             setFetchedAt(time);
+            setFetchedDate(getISTDate());
         } catch (e) {
             if (!silent) setError(e.message || 'Failed to load movers');
         } finally {
@@ -82,9 +83,7 @@ export default function Movers() {
                 if (cached) {
                     setData(cached.data);
                     setFetchedAt(cached.time);
-                } else {
-                    setData(null);
-                    setFetchedAt(null);
+                    setFetchedDate(cached.date);
                 }
                 setCloudLoading(false);
             }
@@ -198,7 +197,7 @@ export default function Movers() {
                         padding: '7px 14px', borderRadius: 8, fontSize: '.8rem', color: 'var(--text-2)',
                         display: 'flex', alignItems: 'center', gap: 6
                     }}>
-                        📡 <strong>Data</strong> as of {fetchedAt}
+                        📡 <strong>Data</strong> as of {fetchedAt} {fetchedDate !== getISTDate() ? `(${fetchedDate})` : ''}
                     </div>
                 )}
             </div>

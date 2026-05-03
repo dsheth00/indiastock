@@ -68,7 +68,13 @@ export default function Portfolio() {
     const [csvTextData, setCsvTextData] = useState('');
     const [manualTrades, setManualTrades] = useState([]);
     const [showTradeForm, setShowTradeForm] = useState(false);
-    const [tradeForm, setTradeForm] = useState({ ticker: 'HDFCBANK', qty: '', price: '' });
+    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [tradeForm, setTradeForm] = useState({ 
+        ticker: 'HDFCBANK', qty: '', price: '', 
+        date: new Date().toLocaleDateString('en-CA'), // YYYY-MM-DD
+        time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) // HH:MM
+    });
     const [chartType, setChartType] = useState('pnl');
     const fileRef = useRef(null);
 
@@ -142,18 +148,46 @@ export default function Portfolio() {
     };
 
     const handleUnlockAddTrade = () => {
+        if (isUnlocked) {
+            setShowTradeForm(true);
+            return;
+        }
         const code = prompt("Enter passcode to unlock manual trades:");
         if (code === 'drs12papa') {
+            setIsUnlocked(true);
             setShowTradeForm(true);
         } else if (code !== null) {
             alert('Incorrect passcode');
         }
     };
 
+    const handleEditClick = (trade) => {
+        if (isUnlocked) {
+            setEditingId(trade.id);
+            return;
+        }
+        const code = prompt("Enter passcode to edit trades:");
+        if (code === 'drs12papa') {
+            setIsUnlocked(true);
+            setEditingId(trade.id);
+        } else if (code !== null) {
+            alert('Incorrect passcode');
+        }
+    };
+
+
     const deleteTrade = (id) => {
         const updated = manualTrades.filter(t => t.id !== id);
         setManualTrades(updated);
         setCloudStore('indstk_manual_trades', updated);
+        process(csvTextData, updated, false);
+    };
+
+    const saveEdit = (id, updatedFields) => {
+        const updated = manualTrades.map(t => t.id === id ? { ...t, ...updatedFields } : t);
+        setManualTrades(updated);
+        setCloudStore('indstk_manual_trades', updated);
+        setEditingId(null);
         process(csvTextData, updated, false);
     };
 
@@ -166,13 +200,18 @@ export default function Portfolio() {
             qty, 
             price, 
             id: Date.now(),
-            date: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })
+            date: tradeForm.date,
+            time: tradeForm.time
         };
         const updated = [...manualTrades, newTrade];
         setManualTrades(updated);
         setCloudStore('indstk_manual_trades', updated);
         setShowTradeForm(false);
-        setTradeForm({ ticker: 'HDFCBANK', qty: '', price: '' });
+        setTradeForm({ 
+            ticker: 'HDFCBANK', qty: '', price: '',
+            date: new Date().toLocaleDateString('en-CA'),
+            time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        });
         process(csvTextData, updated, false);
     };
 
@@ -253,6 +292,14 @@ export default function Portfolio() {
                     <div className="input-group" style={{ width: 120 }}>
                         <label>Avg Price (₹)</label>
                         <input className="input" type="number" step="0.05" placeholder="0.00" value={tradeForm.price} onChange={e => setTradeForm({ ...tradeForm, price: e.target.value })} />
+                    </div>
+                    <div className="input-group" style={{ width: 140 }}>
+                        <label>Date</label>
+                        <input className="input" type="date" value={tradeForm.date} onChange={e => setTradeForm({ ...tradeForm, date: e.target.value })} />
+                    </div>
+                    <div className="input-group" style={{ width: 100 }}>
+                        <label>Time</label>
+                        <input className="input" type="time" value={tradeForm.time} onChange={e => setTradeForm({ ...tradeForm, time: e.target.value })} />
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                         <button className="btn btn-primary" onClick={submitTrade}>Confirm Trade</button>
@@ -405,37 +452,87 @@ export default function Portfolio() {
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th>Date</th>
+                                            <th>Date / Time</th>
                                             <th>Ticker</th>
                                             <th>Action</th>
                                             <th>Qty</th>
                                             <th>Price</th>
                                             <th>Total</th>
-                                            <th>Action</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {[...manualTrades].reverse().map(t => (
                                             <tr key={t.id}>
-                                                <td className="text-3 text-sm">{t.date || '—'}</td>
-                                                <td className="mono" style={{ fontWeight: 700 }}>{t.ticker}</td>
-                                                <td>
-                                                    <span className={`badge ${t.qty >= 0 ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '.7rem' }}>
-                                                        {t.qty >= 0 ? 'BUY' : 'SELL'}
-                                                    </span>
-                                                </td>
-                                                <td className="mono">{Math.abs(t.qty)}</td>
-                                                <td className="mono">₹{fmt(t.price)}</td>
-                                                <td className="mono">₹{fmt(Math.abs(t.qty * t.price))}</td>
-                                                <td>
-                                                    <button 
-                                                        className="btn" 
-                                                        style={{ padding: '2px 8px', fontSize: '.7rem', color: 'var(--red)', borderColor: 'var(--red)', opacity: 0.7 }}
-                                                        onClick={() => { if(confirm('Delete this trade?')) deleteTrade(t.id); }}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </td>
+                                                {editingId === t.id ? (
+                                                    <>
+                                                        <td>
+                                                            <div className="flex gap-4">
+                                                                <input type="date" className="input" style={{ padding: '2px 4px', fontSize: '.75rem' }} value={t.date} onChange={e => saveEdit(t.id, { date: e.target.value })} />
+                                                                <input type="time" className="input" style={{ padding: '2px 4px', fontSize: '.75rem' }} value={t.time} onChange={e => saveEdit(t.id, { time: e.target.value })} />
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <input type="text" className="input" style={{ padding: '2px 4px', fontSize: '.75rem', width: 80 }} value={t.ticker} onChange={e => saveEdit(t.id, { ticker: e.target.value.toUpperCase() })} />
+                                                        </td>
+                                                        <td>
+                                                            <select className="select" style={{ padding: '2px 4px', fontSize: '.75rem' }} value={t.qty >= 0 ? 'Buy' : 'Sell'} onChange={e => {
+                                                                const newQty = e.target.value === 'Buy' ? Math.abs(t.qty) : -Math.abs(t.qty);
+                                                                saveEdit(t.id, { qty: newQty });
+                                                            }}>
+                                                                <option value="Buy">BUY</option>
+                                                                <option value="Sell">SELL</option>
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            <input type="number" className="input" style={{ padding: '2px 4px', fontSize: '.75rem', width: 60 }} value={Math.abs(t.qty)} onChange={e => {
+                                                                const val = parseFloat(e.target.value) || 0;
+                                                                const newQty = t.qty >= 0 ? val : -val;
+                                                                saveEdit(t.id, { qty: newQty });
+                                                            }} />
+                                                        </td>
+                                                        <td>
+                                                            <input type="number" step="0.05" className="input" style={{ padding: '2px 4px', fontSize: '.75rem', width: 80 }} value={t.price} onChange={e => saveEdit(t.id, { price: parseFloat(e.target.value) || 0 })} />
+                                                        </td>
+                                                        <td className="mono">₹{fmt(Math.abs(t.qty * t.price))}</td>
+                                                        <td>
+                                                            <button className="btn btn-primary" style={{ padding: '2px 8px', fontSize: '.7rem' }} onClick={() => setEditingId(null)}>Done</button>
+                                                        </td>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <td className="text-3 text-sm">
+                                                            {t.date || '—'} <span style={{ opacity: 0.6 }}>{t.time || ''}</span>
+                                                        </td>
+                                                        <td className="mono" style={{ fontWeight: 700 }}>{t.ticker}</td>
+                                                        <td>
+                                                            <span className={`badge ${t.qty >= 0 ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '.7rem' }}>
+                                                                {t.qty >= 0 ? 'BUY' : 'SELL'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="mono">{Math.abs(t.qty)}</td>
+                                                        <td className="mono">₹{fmt(t.price)}</td>
+                                                        <td className="mono">₹{fmt(Math.abs(t.qty * t.price))}</td>
+                                                        <td>
+                                                            <div className="flex gap-6">
+                                                                <button 
+                                                                    className="btn" 
+                                                                    style={{ padding: '2px 8px', fontSize: '.7rem', color: 'var(--accent)', borderColor: 'var(--accent)', opacity: 0.7 }}
+                                                                    onClick={() => handleEditClick(t)}
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button 
+                                                                    className="btn" 
+                                                                    style={{ padding: '2px 8px', fontSize: '.7rem', color: 'var(--red)', borderColor: 'var(--red)', opacity: 0.7 }}
+                                                                    onClick={() => { if(confirm('Delete this trade?')) deleteTrade(t.id); }}
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>

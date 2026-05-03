@@ -41,8 +41,15 @@ ALL_NSE = NIFTY_50 + [
     "AMBUJACEM","ACC","DABUR","GODREJCP","MARICO","COLPAL","PIDILITIND","BERGEPAINT",
     "HAVELLS","VOLTAS","TATAPOWER","TATAELXSI","PERSISTENT","COFORGE","LTIM","MPHASIS",
     "DIVISLAB","BIOCON","LUPIN","AUROPHARMA","TORNTPHARM","SBICARD","CHOLAFIN","MUTHOOTFIN",
-    "MANAPPURAM","MOTHERSON","BOSCHLTD","SIEMENS","ABB","PAGEIND","DMART","JIOFIN"
+    "MANAPPURAM","MOTHERSON","BOSCHLTD","SIEMENS","ABB","PAGEIND","DMART","JIOFIN",
+    "DLF","VBL","GAIL","IOC","RECLTD","PFC","SRF","HDFCLIFE","ICICIPRULI","HDFCAMC"
 ]
+
+BANK_NIFTY = ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "AUBL", "BANDHANBNK", "FEDERALBNK", "IDFCFIRSTB", "PNB", "BANKBARODA"]
+NEXT_50 = ["TATAELXSI", "LTIM", "ABB", "SIEMENS", "DMART", "MUTHOOTFIN", "COLPAL", "DABUR", "MARICO", "PIDILITIND", "BERGEPAINT", "HAVELLS", "TATAPOWER", "GAIL", "IOC", "DLF", "VBL", "PFC", "RECLTD", "CANBK", "BANKBARODA", "PNB", "SRF", "PIIND", "HAL", "BEL"]
+FNO = NIFTY_50 + BANK_NIFTY + NEXT_50 + ["AMBUJACEM", "ACC", "VEDL", "TATAMOTORS", "TATACONSUM", "HINDALCO", "JSWSTEEL", "ADANIENT", "ADANIPORTS"]
+FNO = sorted(list(set(FNO)))
+
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -50,7 +57,12 @@ class handler(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         uni = qs.get("universe", ["nifty"])[0]
         
-        tickers = ALL_NSE if uni == "all" else NIFTY_50
+        if uni == "nifty": tickers = NIFTY_50
+        elif uni == "banknifty": tickers = BANK_NIFTY
+        elif uni == "next50": tickers = NEXT_50
+        elif uni == "fno": tickers = FNO
+        else: tickers = ALL_NSE
+
         yf_tickers = [f"{t}.NS" for t in tickers]
         rows = []
         try:
@@ -81,7 +93,15 @@ class handler(BaseHTTPRequestHandler):
                         })
                     except Exception:
                         continue
+            
+            # Post-filtering for price universes
+            if uni == "gt20":
+                rows = [r for r in rows if r["price"] > 20]
+            elif uni == "lt20":
+                rows = [r for r in rows if r["price"] < 20]
+            
             rows.sort(key=lambda r: r["changePct"], reverse=True)
+
         except Exception as e:
             rows = [{"error": str(e)}]
 

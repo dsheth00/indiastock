@@ -78,8 +78,13 @@ export default function Screener() {
                 <div className="input-group" style={{ flex: 1, minWidth: 180 }}>
                     <label>Universe</label>
                     <select className="select" value={universe} onChange={e => setUniverse(e.target.value)}>
-                        <option value="nifty">Nifty 50 (fast ~5s)</option>
-                        <option value="all">All NSE ~100 stocks</option>
+                        <option value="nifty">NIFTY 50</option>
+                        <option value="banknifty">BANK NIFTY</option>
+                        <option value="next50">NIFTY NEXT 50</option>
+                        <option value="fno">F&O Securities</option>
+                        <option value="gt20">Securities &gt; Rs 20</option>
+                        <option value="lt20">Securities &lt; Rs 20</option>
+                        <option value="all">All Securities</option>
                     </select>
                 </div>
                 <button className="btn btn-primary" onClick={load} disabled={loading}>

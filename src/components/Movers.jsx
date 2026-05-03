@@ -184,8 +184,13 @@ export default function Movers() {
                 <div className="input-group" style={{ minWidth: 200 }}>
                     <label>Universe</label>
                     <select className="select" value={universe} onChange={e => setUniverse(e.target.value)}>
-                        <option value="nifty">Nifty 50 (fast)</option>
-                        <option value="all">All NSE ~100 stocks</option>
+                        <option value="nifty">NIFTY 50</option>
+                        <option value="banknifty">BANK NIFTY</option>
+                        <option value="next50">NIFTY NEXT 50</option>
+                        <option value="fno">F&O Securities</option>
+                        <option value="gt20">Securities &gt; Rs 20</option>
+                        <option value="lt20">Securities &lt; Rs 20</option>
+                        <option value="all">All Securities</option>
                     </select>
                 </div>
                 <button className="btn btn-primary" onClick={() => load(false)} disabled={loading || bgLoading}>

@@ -43,8 +43,15 @@ ALL_NSE = NIFTY_50 + [
     "AMBUJACEM","ACC","DABUR","GODREJCP","MARICO","COLPAL","PIDILITIND","BERGEPAINT",
     "HAVELLS","VOLTAS","TATAPOWER","TATAELXSI","PERSISTENT","COFORGE","LTIM","MPHASIS",
     "DIVISLAB","BIOCON","LUPIN","AUROPHARMA","TORNTPHARM","SBICARD","CHOLAFIN","MUTHOOTFIN",
-    "MANAPPURAM","MOTHERSON","BOSCHLTD","SIEMENS","ABB","PAGEIND","DMART","JIOFIN"
+    "MANAPPURAM","MOTHERSON","BOSCHLTD","SIEMENS","ABB","PAGEIND","DMART","JIOFIN",
+    "DLF","VBL","GAIL","IOC","RECLTD","PFC","SRF","HDFCLIFE","ICICIPRULI","HDFCAMC"
 ]
+
+BANK_NIFTY = ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "AUBL", "BANDHANBNK", "FEDERALBNK", "IDFCFIRSTB", "PNB", "BANKBARODA"]
+NEXT_50 = ["TATAELXSI", "LTIM", "ABB", "SIEMENS", "DMART", "MUTHOOTFIN", "COLPAL", "DABUR", "MARICO", "PIDILITIND", "BERGEPAINT", "HAVELLS", "TATAPOWER", "GAIL", "IOC", "DLF", "VBL", "PFC", "RECLTD", "CANBK", "BANKBARODA", "PNB", "SRF", "PIIND", "HAL", "BEL"]
+FNO = NIFTY_50 + BANK_NIFTY + NEXT_50 + ["AMBUJACEM", "ACC", "VEDL", "TATAMOTORS", "TATACONSUM", "HINDALCO", "JSWSTEEL", "ADANIENT", "ADANIPORTS"]
+FNO = sorted(list(set(FNO)))
+
 
 NAMES = {"ADANIENT":"Adani Enterprises","ADANIPORTS":"Adani Ports","APOLLOHOSP":"Apollo Hospitals","ASIANPAINT":"Asian Paints","AXISBANK":"Axis Bank","BAJAJ-AUTO":"Bajaj Auto","BAJFINANCE":"Bajaj Finance","BAJAJFINSV":"Bajaj Finserv","BEL":"Bharat Electronics","BPCL":"BPCL","BHARTIARTL":"Bharti Airtel","BRITANNIA":"Britannia","CIPLA":"Cipla","COALINDIA":"Coal India","DRREDDY":"Dr. Reddy's","EICHERMOT":"Eicher Motors","ETERNAL":"Eternal","GRASIM":"Grasim","HCLTECH":"HCL Tech","HDFCBANK":"HDFC Bank","HDFCLIFE":"HDFC Life","HEROMOTOCO":"Hero MotoCorp","HINDALCO":"Hindalco","HINDUNILVR":"HUL","ICICIBANK":"ICICI Bank","ITC":"ITC","INDUSINDBK":"IndusInd Bank","INFY":"Infosys","JSWSTEEL":"JSW Steel","KOTAKBANK":"Kotak Bank","LT":"L&T","M&M":"M&M","MARUTI":"Maruti Suzuki","NESTLEIND":"Nestle India","NTPC":"NTPC","ONGC":"ONGC","POWERGRID":"Power Grid","RELIANCE":"Reliance","SBILIFE":"SBI Life","SBIN":"SBI","SHRIRAMFIN":"Shriram Finance","SUNPHARMA":"Sun Pharma","TCS":"TCS","TATACONSUM":"Tata Consumer","TATASTEEL":"Tata Steel","TECHM":"Tech Mahindra","TITAN":"Titan","TRENT":"Trent","ULTRACEMCO":"UltraTech Cement","WIPRO":"Wipro"}
 for t in ALL_NSE:
@@ -65,7 +72,12 @@ class handler(BaseHTTPRequestHandler):
         preset_name = qs.get("preset", ["High ROE & Low Debt"])[0]
         uni = qs.get("universe", ["nifty"])[0]
         
-        tickers = ALL_NSE if uni == "all" else NIFTY_50
+        if uni == "nifty": tickers = NIFTY_50
+        elif uni == "banknifty": tickers = BANK_NIFTY
+        elif uni == "next50": tickers = NEXT_50
+        elif uni == "fno": tickers = FNO
+        else: tickers = ALL_NSE
+
         filter_fn = PRESETS.get(preset_name, PRESETS["High ROE & Low Debt"])
         
         rows = []
@@ -100,7 +112,12 @@ class handler(BaseHTTPRequestHandler):
                     "Beta": _s(info, "beta"),
                     "P/B": _s(info, "priceToBook")
                 }
+                # Price filtering logic for universes
+                if uni == "gt20" and _num(fund["Current Price"]) <= 20: return None
+                if uni == "lt20" and _num(fund["Current Price"]) >= 20: return None
+                
                 return fund if filter_fn(fund) else None
+
 
             # Thread pool to speed it up!
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:

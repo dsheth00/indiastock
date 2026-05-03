@@ -10,8 +10,11 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         qs = parse_qs(urlparse(self.path).query)
         ticker = qs.get("ticker", ["HDFCBANK"])[0].strip().upper()
+        if "." not in ticker:
+            yf_sym = f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"
+        else:
+            yf_sym = ticker
         period = qs.get("period", ["1y"])[0]
-        yf_sym = f"{ticker}.NS" if "." not in ticker else ticker
 
         allowed = {"1mo", "3mo", "6mo", "1y", "2y", "5y"}
         if period not in allowed:

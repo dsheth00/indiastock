@@ -15,7 +15,12 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         qs = parse_qs(urlparse(self.path).query)
         ticker = qs.get("ticker", ["HDFCBANK"])[0].strip().upper()
-        yf_sym = f"{ticker}.NS" if "." not in ticker else ticker
+        # If numeric, assume BSE (.BO). If alphabetic without dot, assume NSE (.NS)
+        if "." not in ticker:
+            yf_sym = f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"
+        else:
+            yf_sym = ticker
+
 
         try:
             info = yf.Ticker(yf_sym).info

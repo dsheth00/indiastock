@@ -46,7 +46,11 @@ def _clean_num(s: str) -> float:
 def api_quote():
     import yfinance as yf
     ticker = request.args.get("ticker", "HDFCBANK").strip().upper()
-    yf_sym = f"{ticker}.NS" if "." not in ticker else ticker
+    if "." not in ticker:
+        yf_sym = f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"
+    else:
+        yf_sym = ticker
+
     try:
         info = yf.Ticker(yf_sym).info
         price = _safe(info, "currentPrice")
@@ -73,9 +77,13 @@ def api_quote():
 def api_fundamentals():
     import yfinance as yf
     ticker = request.args.get("ticker", "HDFCBANK").strip().upper()
-    yf_sym = f"{ticker}.NS" if "." not in ticker else ticker
+    if "." not in ticker:
+        yf_sym = f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"
+    else:
+        yf_sym = ticker
     try:
         info = yf.Ticker(yf_sym).info
+
         mc = _safe(info, "marketCap")
         body = {
             "ticker": ticker, "name": _safe(info, "shortName", ticker),
@@ -102,12 +110,16 @@ def api_fundamentals():
 def api_history():
     import yfinance as yf
     ticker = request.args.get("ticker", "HDFCBANK").strip().upper()
+    if "." not in ticker:
+        yf_sym = f"{ticker}.BO" if ticker.isdigit() else f"{ticker}.NS"
+    else:
+        yf_sym = ticker
     period = request.args.get("period", "1y")
-    yf_sym = f"{ticker}.NS" if "." not in ticker else ticker
     if period not in {"1mo", "3mo", "6mo", "1y", "2y", "5y"}:
         period = "1y"
     try:
         df = yf.Ticker(yf_sym).history(period=period, interval="1d")
+
         if df.empty:
             body = {"ticker": ticker, "data": []}
         else:

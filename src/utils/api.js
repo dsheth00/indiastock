@@ -51,11 +51,13 @@ export const NIFTY_50 = [
 export const CHART_PERIODS = ['1mo','3mo','6mo','1y','2y','5y'];
 
 export const DEFAULT_WATCHLISTS = {
-    "⭐ Bluechips": ["HDFCBANK","RELIANCE","TCS","INFY","ICICIBANK","HCLTECH"],
+    "⭐ Favorites": ["RELIANCE", "HDFCBANK", "TCS", "INFY"],
+    "🚀 Growth Picks": ["ZOMATO", "TRENT", "HAL", "BEL"],
+    "🏛️ BSE Favorites": ["500180", "532215", "532174", "539314"],
+    "📈 NSE Broad Market": ["PNB", "BANKBARODA", "TATAPOWER", "JIOFIN"],
     "🏦 Banking":   ["SBIN","KOTAKBANK","AXISBANK","INDUSINDBK","BAJFINANCE"],
     "💻 IT & Tech": ["INFY","TCS","WIPRO","TECHM","HCLTECH","LTIM"],
     "💊 Pharma":    ["SUNPHARMA","DRREDDY","CIPLA","DIVISLAB","LUPIN"],
-    "📈 My Picks":  ["OLAELEC","TITAN","TRENT","DMART","ZOMATO"],
 };
 
 export const SCREENER_PRESETS = [
@@ -125,6 +127,10 @@ export const TICKER_DIRECTORY = {
     "COHANCE":"Cohance Lifesciences Ltd", "SUZLON":"Suzlon Energy Ltd",
     "IREDA":"IREDA", "JIOFIN":"Jio Financial Services", "MAZDOC":"Mazagon Dock",
     "RVNL":"Rail Vikas Nigam Ltd", "IRFC":"Indian Railway Finance Corp",
+    "539314":"Mahanagar Gas Ltd (BSE)", "500180":"HDFC Bank (BSE)", "532215":"Axis Bank (BSE)",
+    "532174":"ICICI Bank (BSE)", "500209":"Infosys (BSE)", "PNB":"Punjab National Bank",
+    "BANKBARODA":"Bank of Baroda", "TATAPOWER":"Tata Power", "CANBK":"Canara Bank",
+    "IDFCFIRSTB":"IDFC First Bank", "FEDERALBNK":"Federal Bank"
 };
 
 // Sorted list of all tickers for dropdown/search

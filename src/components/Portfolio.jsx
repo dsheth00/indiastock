@@ -70,10 +70,12 @@ export default function Portfolio() {
     const [showTradeForm, setShowTradeForm] = useState(false);
     const [isUnlocked, setIsUnlocked] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [editingPosTicker, setEditingPosTicker] = useState(null);
+    const [posEditForm, setPosEditForm] = useState({ qty: '', avgPrice: '' });
     const [tradeForm, setTradeForm] = useState({ 
         ticker: 'HDFCBANK', qty: '', price: '', 
-        date: new Date().toLocaleDateString('en-CA'), // YYYY-MM-DD
-        time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) // HH:MM
+        date: new Date().toLocaleDateString('en-CA'), 
+        time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) 
     });
     const [chartType, setChartType] = useState('pnl');
     const fileRef = useRef(null);
@@ -188,6 +190,44 @@ export default function Portfolio() {
         setManualTrades(updated);
         setCloudStore('indstk_manual_trades', updated);
         setEditingId(null);
+        process(csvTextData, updated, false);
+    };
+
+    const handlePosEditSave = (ticker, currentPos) => {
+        const targetQty = parseFloat(posEditForm.qty);
+        const targetPrice = parseFloat(posEditForm.avgPrice);
+        if (isNaN(targetQty) || isNaN(targetPrice)) return alert('Invalid values');
+
+        // Logic: Add a trade that makes the total qty and avg price match target.
+        // If current qty is 10 and target is 25, we need +15.
+        // Price is harder if we want the weighted average to match exactly.
+        // For simplicity, we'll just add a trade of the delta qty at the target price.
+        // If qty doesn't change, we just add a 0-qty price adjustment trade? No.
+        // We'll replace all manual trades for this ticker with one single trade that reconciles the whole position.
+        // Total Qty = CSV Qty + Manual Qty. 
+        // We need: Manual Qty = Target Qty - CSV Qty.
+        // However, we don't easily have 'CSV Qty' here.
+        // So we'll just add a new trade: Ticker, Qty: Target - Current, Price: Target.
+        const deltaQty = targetQty - currentPos.qty;
+        if (Math.abs(deltaQty) < 0.001 && Math.abs(targetPrice - currentPos.avgPrice) < 0.01) {
+            setEditingPosTicker(null);
+            return;
+        }
+
+        const newTrade = {
+            ticker,
+            qty: deltaQty,
+            price: targetPrice,
+            id: Date.now(),
+            date: new Date().toLocaleDateString('en-CA'),
+            time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+            isAdjustment: true
+        };
+
+        const updated = [...manualTrades, newTrade];
+        setManualTrades(updated);
+        setCloudStore('indstk_manual_trades', updated);
+        setEditingPosTicker(null);
         process(csvTextData, updated, false);
     };
 
@@ -408,33 +448,85 @@ export default function Portfolio() {
                                     <th>Stock</th><th>Qty</th><th>Avg Price</th><th>LTP</th>
                                     <th>Invested</th><th>Current</th>
                                     <th>Unrealized</th><th>Realized</th><th>Total P&L</th>
+                                    {isUnlocked && <th>Actions</th>}
                                 </tr>
                             </thead>
                             <tbody>
                                 {positions.map(p => (
-                                    <tr key={p.stock}>
+                                    <tr key={p.stock} style={editingPosTicker === p.stock ? { background: 'var(--bg-active)' } : {}}>
                                         <td className="mono" style={{ fontWeight: 700 }}>{p.stock}</td>
-                                        <td className="mono">{p.qty > 0 ? p.qty : <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
-                                        <td className="mono">{p.avgPrice > 0 ? fmtRupee(p.avgPrice) : '—'}</td>
-                                        <td className="mono">{fmtRupee(p.ltp)}</td>
-                                        <td className="mono">{fmtRupee(p.invested)}</td>
-                                        <td className="mono">{fmtRupee(p.current)}</td>
-                                        <td className={`mono ${p.unrealized >= 0 ? 'text-green' : 'text-red'}`}>
-                                            {p.unrealized >= 0 ? '+' : ''}{fmtRupee(p.unrealized)}
-                                        </td>
-                                        <td className={`mono ${p.realized >= 0 ? 'text-green' : 'text-red'}`}
-                                            style={{ opacity: Math.abs(p.realized) < 0.01 ? 0.3 : 1 }}>
-                                            {Math.abs(p.realized) >= 0.01
-                                                ? (p.realized >= 0 ? '+' : '') + fmtRupee(p.realized)
-                                                : '—'}
-                                        </td>
-                                        <td className={`mono ${p.totalPnl >= 0 ? 'text-green' : 'text-red'}`}
-                                            style={{ fontWeight: 700 }}>
-                                            {p.totalPnl >= 0 ? '+' : ''}{fmtRupee(p.totalPnl)}
-                                            <span style={{ fontSize: '.7rem', marginLeft: 4, opacity: 0.7 }}>
-                                                ({p.pnlPct > 0 ? '+' : ''}{p.pnlPct}%)
-                                            </span>
-                                        </td>
+                                        
+                                        {editingPosTicker === p.stock ? (
+                                            <>
+                                                <td>
+                                                    <input 
+                                                        type="number" 
+                                                        className="input" 
+                                                        style={{ padding: '2px 4px', fontSize: '.75rem', width: 70 }} 
+                                                        value={posEditForm.qty} 
+                                                        onChange={e => setPosEditForm({ ...posEditForm, qty: e.target.value })} 
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.05" 
+                                                        className="input" 
+                                                        style={{ padding: '2px 4px', fontSize: '.75rem', width: 90 }} 
+                                                        value={posEditForm.avgPrice} 
+                                                        onChange={e => setPosEditForm({ ...posEditForm, avgPrice: e.target.value })} 
+                                                    />
+                                                </td>
+                                                <td className="mono">{fmtRupee(p.ltp)}</td>
+                                                <td colSpan={5} className="text-3 text-sm">
+                                                    Adjusting position... (delta will be added as a trade)
+                                                </td>
+                                                <td>
+                                                    <div className="flex gap-4">
+                                                        <button className="btn btn-primary" style={{ padding: '2px 8px', fontSize: '.7rem' }} onClick={() => handlePosEditSave(p.stock, p)}>Save</button>
+                                                        <button className="btn" style={{ padding: '2px 8px', fontSize: '.7rem' }} onClick={() => setEditingPosTicker(null)}>Cancel</button>
+                                                    </div>
+                                                </td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <td className="mono">{p.qty > 0 ? p.qty : <span style={{ color: 'var(--text-3)' }}>—</span>}</td>
+                                                <td className="mono">{p.avgPrice > 0 ? fmtRupee(p.avgPrice) : '—'}</td>
+                                                <td className="mono">{fmtRupee(p.ltp)}</td>
+                                                <td className="mono">{fmtRupee(p.invested)}</td>
+                                                <td className="mono">{fmtRupee(p.current)}</td>
+                                                <td className={`mono ${p.unrealized >= 0 ? 'text-green' : 'text-red'}`}>
+                                                    {p.unrealized >= 0 ? '+' : ''}{fmtRupee(p.unrealized)}
+                                                </td>
+                                                <td className={`mono ${p.realized >= 0 ? 'text-green' : 'text-red'}`}
+                                                    style={{ opacity: Math.abs(p.realized) < 0.01 ? 0.3 : 1 }}>
+                                                    {Math.abs(p.realized) >= 0.01
+                                                        ? (p.realized >= 0 ? '+' : '') + fmtRupee(p.realized)
+                                                        : '—'}
+                                                </td>
+                                                <td className={`mono ${p.totalPnl >= 0 ? 'text-green' : 'text-red'}`}
+                                                    style={{ fontWeight: 700 }}>
+                                                    {p.totalPnl >= 0 ? '+' : ''}{fmtRupee(p.totalPnl)}
+                                                    <span style={{ fontSize: '.7rem', marginLeft: 4, opacity: 0.7 }}>
+                                                        ({p.pnlPct > 0 ? '+' : ''}{p.pnlPct}%)
+                                                    </span>
+                                                </td>
+                                                {isUnlocked && (
+                                                    <td>
+                                                        <button 
+                                                            className="btn" 
+                                                            style={{ padding: '2px 8px', fontSize: '.7rem', color: 'var(--accent)', borderColor: 'var(--accent)', opacity: 0.7 }}
+                                                            onClick={() => {
+                                                                setEditingPosTicker(p.stock);
+                                                                setPosEditForm({ qty: p.qty, avgPrice: p.avgPrice });
+                                                            }}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                    </td>
+                                                )}
+                                            </>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>

@@ -79,6 +79,7 @@ export default function Portfolio() {
     });
     const [chartType, setChartType] = useState('pnl');
     const fileRef = useRef(null);
+    const tradebookFileRef = useRef(null);
 
     useEffect(() => {
         let mounted = true;
@@ -278,8 +279,18 @@ export default function Portfolio() {
                     style={{ display: 'none' }}
                     onChange={handleFileRead}
                 />
+                <input
+                    ref={tradebookFileRef}
+                    type="file"
+                    accept=".csv,.txt"
+                    style={{ display: 'none' }}
+                    onChange={handleFileRead}
+                />
                 <button className="btn btn-primary" onClick={() => fileRef.current?.click()} disabled={loading}>
                     📂 Upload port.csv
+                </button>
+                <button className="btn" onClick={() => tradebookFileRef.current?.click()} disabled={loading}>
+                    📒 Upload tradeBook.csv
                 </button>
 
                 {(csvTextData || manualTrades.length > 0) && (
@@ -361,12 +372,17 @@ export default function Portfolio() {
                     <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>📊</div>
                     <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 6 }}>No portfolio data loaded</div>
                     <div style={{ color: 'var(--text-3)', fontSize: '.88rem', marginBottom: 20 }}>
-                        Upload your broker's trade history CSV to see your positions, P&amp;L breakdown, and charts.
+                        Upload your broker's portfolio or trade book CSV to see positions, P&amp;L breakdown, and charts.
                         <br />Once uploaded, your data persists across sessions and prices refresh automatically.
                     </div>
-                    <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
-                        📂 Upload port.csv
-                    </button>
+                    <div className="flex gap-12" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button className="btn btn-primary" onClick={() => fileRef.current?.click()}>
+                            📂 Upload port.csv
+                        </button>
+                        <button className="btn" onClick={() => tradebookFileRef.current?.click()}>
+                            📒 Upload tradeBook.csv
+                        </button>
+                    </div>
                 </div>
             )}
 

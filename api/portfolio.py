@@ -4,10 +4,12 @@ GET  /api/portfolio — returns empty (client-driven via POST).
 
 Broker abbreviation → NSE symbol mapping is applied so yfinance can fetch live LTPs.
 """
+import csv
 import json
 import re
 import concurrent.futures
 from http.server import BaseHTTPRequestHandler
+from io import StringIO
 
 # ── Broker abbreviation → NSE yfinance symbol ────────────────────────────────
 # Keys  = exact names from broker CSV (after stripping " DELIVERY" / " MTF")
@@ -82,8 +84,8 @@ def _fetch_price(broker_sym: str) -> tuple[str, float]:
     return broker_sym, 0.0
 
 
-def parse_portfolio_lines(lines: list) -> dict:
-    """Parse broker CSV lines into position records."""
+def _parse_port_records(lines: list) -> list:
+    """Parse ICICI Direct port.csv multi-line format into trade records."""
     records = []
     for k in range(len(lines)):
         line = lines[k].strip()
@@ -106,12 +108,43 @@ def parse_portfolio_lines(lines: list) -> dict:
                         records.append({
                             "stock":      stock_name,
                             "action":     action,
-                            "ltp":        ltp,       # CSV LTP — will be overwritten with live
+                            "ltp":        ltp,
                             "tradePrice": trade_price,
                             "qty":        qty,
                         })
+    return records
 
-    # Aggregate positions (process oldest first → reverse CSV order)
+
+def _parse_tradebook_records(lines: list) -> list:
+    """Parse ICICI Direct tradeBook CSV (Date,Stock,Action,Qty,Price,...) into trade records."""
+    if not lines:
+        return []
+    header = lines[0].strip().lower()
+    if not (header.startswith("date,") and "stock" in header and "action" in header):
+        return []
+
+    records = []
+    reader = csv.DictReader(StringIO("\n".join(lines)))
+    for row in reader:
+        stock  = (row.get("Stock") or "").strip()
+        action = (row.get("Action") or "").strip()
+        if not stock or action not in ("Buy", "Sell"):
+            continue
+        qty         = _clean_num(row.get("Qty") or "0")
+        trade_price = _clean_num(row.get("Price") or "0")
+        if qty > 0 and trade_price > 0:
+            records.append({
+                "stock":      stock,
+                "action":     action,
+                "ltp":        trade_price,
+                "tradePrice": trade_price,
+                "qty":        qty,
+            })
+    return records
+
+
+def _aggregate_records(records: list) -> dict:
+    """Aggregate trade records into open positions (process oldest first)."""
     port: dict = {}
     for r in reversed(records):
         stk = r["stock"]
@@ -123,7 +156,7 @@ def parse_portfolio_lines(lines: list) -> dict:
         if r["action"] == "Buy":
             port[stk]["qty"]      += q
             port[stk]["invested"] += tp * q
-            port[stk]["ltp"]       = r["ltp"]   # update LTP from latest record
+            port[stk]["ltp"]       = r["ltp"]
         elif r["action"] == "Sell" and port[stk]["qty"] > 0:
             avg                    = port[stk]["invested"] / port[stk]["qty"]
             port[stk]["realized"] += (tp - avg) * q
@@ -134,6 +167,11 @@ def parse_portfolio_lines(lines: list) -> dict:
             port[stk]["ltp"] = r["ltp"]
 
     return port
+
+
+def parse_portfolio_lines(lines: list) -> dict:
+    """Parse broker CSV lines into position records (port.csv format only)."""
+    return _aggregate_records(_parse_port_records(lines))
 
 
 def build_result(port: dict, live_prices: dict) -> dict:
@@ -183,9 +221,11 @@ def build_result(port: dict, live_prices: dict) -> dict:
 
 
 def full_parse(csv_text: str) -> dict:
-    """Full pipeline: parse + parallel live-price fetch."""
-    lines = csv_text.splitlines()
-    port  = parse_portfolio_lines(lines)
+    """Full pipeline: parse port.csv and/or tradeBook CSV + parallel live-price fetch."""
+    lines   = csv_text.splitlines()
+    records = _parse_tradebook_records(lines)
+    records.extend(_parse_port_records(lines))
+    port    = _aggregate_records(records)
 
     # Fetch live prices for all unique stocks in parallel
     unique_stocks = list(port.keys())
